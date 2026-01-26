@@ -46,29 +46,96 @@ class KnxProjectParser {
     List<DatapointType> datapointTypes = [];
     String? projectId;
 
+    // Nested P-*.zip (ETS5/6): thử giải nén không mật khẩu. Nếu mã hóa AES (ETS6) thì
+    // cần giải nén P-*.zip bằng ETS, 7-Zip hoặc công cụ hỗ trợ WinZip AES, rồi dùng parseFromExtractedDir.
+    Archive? projectArchive;
+    for (final f in archive) {
+      if (f.isFile && f.name.endsWith('.zip') && f.name.contains('P-')) {
+        final zipBytes = f.content as List<int>;
+        // Try with password first if available
+        if (password != null) {
+          try {
+            projectArchive =
+                ZipDecoder().decodeBytes(zipBytes, password: password);
+          } catch (_) {}
+        }
+
+        // Fallback: try without password (if not provided or failed)
+        if (projectArchive == null) {
+          try {
+            projectArchive = ZipDecoder().decodeBytes(zipBytes);
+          } catch (_) {}
+        }
+
+        if (projectArchive == null) {
+          throw _secureProjectHint(
+            'P-*.zip không mở được (có thể đã mã hóa AES). '
+            'Nếu có mật khẩu, hãy đảm bảo đã truyền đúng vào hàm parse(..., password: "xxx").\n'
+            'Hoặc giải nén thủ công bằng ETS/7-Zip.',
+          );
+        }
+        break;
+      }
+    }
+
+    final targetArchive = projectArchive ?? archive;
+
     // First pass: find project ID
-    for (final file in archive) {
+    for (final file in targetArchive) {
       if (file.isFile && file.name.endsWith('/project.xml')) {
         projectId = file.name.split('/').first;
         break;
       }
     }
 
+    // Also check for project.xml without prefix
+    if (projectId == null) {
+      for (final file in targetArchive) {
+        if (file.isFile && file.name == 'project.xml') {
+          break;
+        }
+      }
+    }
+
     // Parse each file in the archive
     try {
-      for (final file in archive) {
+      for (final file in targetArchive) {
         if (!file.isFile) continue;
 
-        final content = utf8.decode(file.content as List<int>);
+        List<int> raw;
+        try {
+          raw = file.content as List<int>;
+        } catch (e) {
+          if (projectArchive != null) {
+            throw _secureProjectHint(
+              'Không thể đọc nội dung file trong P-*.zip (có thể do sai mật khẩu hoặc mã hóa không hỗ trợ). '
+              'Thử kiểm tra lại mật khẩu hoặc giải nén thủ công bằng ETS/7-Zip.',
+            );
+          }
+          rethrow;
+        }
+        final content = _decodeUtf8WithBom(raw);
 
         if (file.name.endsWith('project.xml')) {
           projectInfo = _parseProjectXml(content);
         } else if (file.name == '$projectId/0.xml' ||
-            (projectId == null && file.name.endsWith('/0.xml'))) {
+            (projectId == null && file.name.endsWith('/0.xml')) ||
+            file.name == '0.xml') {
           installations = _parseInstallationXml(content);
-          // Optional: parse datapoint types
-          // This file is large, so we parse it only if needed
-          datapointTypes = _parseDatapointTypes(content);
+          final from0 = _parseDatapointTypes(content);
+          if (from0.isNotEmpty) datapointTypes = from0;
+        }
+      }
+      // knx_master.xml thường ở archive gốc (không nằm trong P-*.zip)
+      if (datapointTypes.isEmpty) {
+        for (final f in archive) {
+          if (f.isFile && f.name == 'knx_master.xml') {
+            try {
+              final raw = f.content as List<int>;
+              datapointTypes = _parseDatapointTypes(_decodeUtf8WithBom(raw));
+            } catch (_) {}
+            break;
+          }
         }
       }
     } catch (e) {
@@ -90,6 +157,19 @@ class KnxProjectParser {
       installations: installations,
       datapointTypes: datapointTypes,
     );
+  }
+
+  /// Decode UTF-8 content, handling BOM (Byte Order Mark)
+  String _decodeUtf8WithBom(List<int> bytes) {
+    // UTF-8 BOM is EF BB BF
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
+      // Skip BOM
+      return utf8.decode(bytes.sublist(3));
+    }
+    return utf8.decode(bytes);
   }
 
   /// Parse project.xml
@@ -118,7 +198,17 @@ class KnxProjectParser {
 
   /// Parse datapoint types from knx_master.xml
   List<DatapointType> _parseDatapointTypes(String xmlContent) {
-    final document = XmlDocument.parse(xmlContent);
+    // Some files may have XML declaration with encoding attribute
+    // but actually contain UTF-8 BOM, so we need to handle it
+    String content = xmlContent;
+
+    // Check for BOM at the start
+    if (content.codeUnitAt(0) == 0xFEFF) {
+      // Remove BOM
+      content = content.substring(1);
+    }
+
+    final document = XmlDocument.parse(content);
     final masterDataElements = document.findAllElements('MasterData');
 
     if (masterDataElements.isEmpty) {
@@ -140,6 +230,43 @@ class KnxProjectParser {
         .toList();
   }
 
+  Exception _secureProjectHint(String msg) {
+    return Exception('$msg\nXem thêm: docs/RESEARCH_KNXPROJ_SECURE.md');
+  }
+
+  /// Parse từ thư mục đã giải nén (sau khi giải nén P-*.zip bằng ETS, 7-Zip, v.v.).
+  /// Cần có project.xml và (tùy chọn) 0.xml trong [dirPath].
+  Future<KnxProject> parseFromExtractedDir(String dirPath) async {
+    final d = Directory(dirPath);
+    if (!await d.exists()) {
+      throw ArgumentError('Directory not found: $dirPath');
+    }
+    File? projectXml;
+    File? zeroXml;
+    for (final e in d.listSync()) {
+      if (e is File) {
+        if (e.path.endsWith('project.xml')) projectXml = e;
+        if (e.path.endsWith('0.xml')) zeroXml = e;
+      }
+    }
+    if (projectXml == null || !await projectXml.exists()) {
+      throw ArgumentError('project.xml not found in $dirPath');
+    }
+    final projectInfo = _parseProjectXml(await projectXml.readAsString());
+    var installations = <Installation>[];
+    var datapointTypes = <DatapointType>[];
+    if (zeroXml != null && await zeroXml.exists()) {
+      final c = await zeroXml.readAsString();
+      installations = _parseInstallationXml(c);
+      datapointTypes = _parseDatapointTypes(c);
+    }
+    return KnxProject(
+      projectInfo: projectInfo,
+      installations: installations,
+      datapointTypes: datapointTypes,
+    );
+  }
+
   Archive _decodeArchive(List<int> bytes, {String? password}) {
     try {
       return ZipDecoder().decodeBytes(bytes, password: password);
@@ -155,16 +282,25 @@ class KnxProjectParser {
   }
 
   /// Parse and export to JSON string
-  Future<String> parseToJson(String filePath, {bool pretty = true}) async {
-    final project = await parse(filePath);
+  Future<String> parseToJson(
+    String filePath, {
+    bool pretty = true,
+    String? password,
+  }) async {
+    final project = await parse(filePath, password: password);
     final encoder =
         pretty ? const JsonEncoder.withIndent('  ') : const JsonEncoder();
     return encoder.convert(project.toJson());
   }
 
   /// Parse and save to JSON file
-  Future<File> parseToJsonFile(String knxprojPath, String outputPath) async {
-    final jsonContent = await parseToJson(knxprojPath, pretty: true);
+  Future<File> parseToJsonFile(
+    String knxprojPath,
+    String outputPath, {
+    String? password,
+  }) async {
+    final jsonContent =
+        await parseToJson(knxprojPath, pretty: true, password: password);
     final outputFile = File(outputPath);
     await outputFile.writeAsString(jsonContent);
     return outputFile;

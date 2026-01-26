@@ -39,7 +39,8 @@ import 'package:knx_parser/knx_parser.dart';
 
 void main() async {
   final parser = KnxProjectParser();
-  final project = await parser.parse('path/to/project.knxproj');
+  // Parse project (supports password for encrypted archives)
+  final project = await parser.parse('path/to/project.knxproj', password: 'optional-password');
   
   print('Project: ${project.projectInfo.name}');
   print('Group Addresses: ${project.installations.first.groupAddresses.length}');
@@ -64,6 +65,10 @@ for (final installation in project.installations) {
     print('Area ${area.address}');
     for (final line in area.lines) {
       print('  Line ${line.address}');
+      // Devices
+      for (final device in line.devices) {
+        print('    Device ${device.address}: ${device.productRefId}');
+      }
     }
   }
   
@@ -152,6 +157,22 @@ dart test
 | **GroupRanges** | Hierarchical address groupings |
 | **Locations** | Physical locations (Buildings, Spaces) |
 | **DatapointTypes** | DPT definitions (DPT-1 to DPT-30+) |
+
+### Secure KNX Projects (ETS6)
+
+The library supports parsing secure KNX projects (AES-encrypted `P-*.zip`) directly by providing the project password.
+
+```dart
+final project = await parser.parse(
+  'secure_project.knxproj', 
+  password: 'your-project-password'
+);
+```
+
+The parser will:
+1. Try to open the archive normally.
+2. If encrypted, use the provided password to unlock the inner `P-*.zip`.
+3. Extract all data including **Security Keys** (ToolKey, GroupAddress Key) and **Device Instances**.
 
 ## Contributing
 

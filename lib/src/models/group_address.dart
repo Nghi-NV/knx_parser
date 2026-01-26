@@ -9,6 +9,7 @@ class GroupAddress {
   final String? description;
   final String? datapointType;
   final GroupRange? range;
+  final String? key;
 
   const GroupAddress({
     required this.id,
@@ -18,6 +19,7 @@ class GroupAddress {
     this.description,
     this.datapointType,
     this.range,
+    this.key,
   });
 
   /// Parse from XML element
@@ -30,6 +32,7 @@ class GroupAddress {
       description: element.getAttribute('Description'),
       datapointType: element.getAttribute('DatapointType'),
       range: range,
+      key: element.getAttribute('Key'),
     );
   }
 
@@ -54,6 +57,7 @@ class GroupAddress {
       if (description != null) 'description': description,
       if (datapointType != null) 'datapointType': datapointType,
       if (range != null) 'rangeId': range!.id,
+      if (key != null) 'key': key,
     };
   }
 

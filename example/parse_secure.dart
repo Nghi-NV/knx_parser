@@ -1,33 +1,49 @@
 import 'dart:io';
 import 'package:knx_parser/knx_parser.dart';
 
+/// Ví dụ: project có P-*.zip mã hóa AES (ETS6).
+/// File .knxkeys bên ngoài không dùng để giải mã P-*.zip.
+///
+/// Cách xử lý: giải nén P-*.zip (lấy từ trong .knxproj) bằng ETS hoặc 7-Zip
+/// (nhập mật khẩu ETS nếu có), lưu project.xml và 0.xml vào một thư mục,
+/// rồi dùng parseFromExtractedDir(đường_dẫn).
 void main() async {
   final parser = KnxProjectParser();
+  const knxproj = '../knxprj_example.knxproj';
+  const outputDir = 'output'; // thư mục chứa project.xml, 0.xml đã giải nén
 
-  // 1. Parse Keys
-  print('Parsing keys...');
-  final keysFile = await File('../test_Open_KNX_Stack.knxkeys').readAsString();
-  final keys = parser.parseKeys(keysFile);
-  print('Keys parsed: ${keys.project}');
-  print('Signature: ${keys.signature}');
-
-  // 2. Parse Project with Keys/Password
-  print('\nParsing project...');
-
-  // NOTE: You must provide the correct Archive Password.
-  // The Signature or Keys from .knxkeys are usually NOT the archive password.
-  // Replace 'YOUR_PASSWORD' with the actual project password.
+  // Bước 1: Thử parse trực tiếp với password
   try {
-    print('Attempting to parse with Signature as password...');
-    final project = await parser.parse(
-      '../Secure_prj.knxproj',
-      password: keys.signature, // Or use your password string
-      knxKeys: keys,
-    );
-    print('SUCCESS! Project Parsed: ${project.projectInfo.name}');
+    final project = await parser.parse(knxproj, password: '1');
+    print('OK: ${project.projectInfo.name}');
+    print('  Installations: ${project.installations.length}');
+
+    // Xuất ra file JSON
+    final jsonFile = await parser
+        .parseToJsonFile(knxproj, '$outputDir/project.json', password: '1');
+    print('  Saved JSON to: ${jsonFile.path}');
+    // return; // Uncomment nếu muốn dừng khi thành công
   } catch (e) {
-    print('Failed with signature: ${e.toString().split('\n').first}');
-    print(
-        'HINT: Encrypted projects require the specific password set during export (ETS).');
+    print('Parse trực tiếp lỗi:');
+    print('  ${e.toString().split("\n").first}');
   }
+
+  // Bước 2: Parse từ thư mục đã giải nén
+  if (await Directory(outputDir).exists()) {
+    try {
+      final project = await parser.parseFromExtractedDir(outputDir);
+      print('\nOK parseFromExtractedDir: ${project.projectInfo.name}');
+      print('  Installations: ${project.installations.length}');
+      return;
+    } catch (e) {
+      print('\nparseFromExtractedDir($outputDir) lỗi: $e');
+    }
+  }
+
+  print('\nHướng dẫn:');
+  print('  1. Mở .knxproj bằng 7-Zip (hoặc ETS), tìm P-*.zip.');
+  print('  2. Giải nén P-*.zip (nhập mật khẩu ETS nếu được hỏi) vào thư mục.');
+  print(
+      '  3. Đặt outputDir = đường dẫn thư mục đó (có project.xml, 0.xml) rồi chạy lại.');
+  print('  Xem: docs/RESEARCH_KNXPROJ_SECURE.md');
 }

@@ -1,4 +1,5 @@
 import 'package:xml/xml.dart';
+import 'device_instance.dart';
 
 /// KNX network topology
 class Topology {
@@ -30,10 +31,8 @@ class Area {
 
   /// Parse from XML element
   factory Area.fromXml(XmlElement element) {
-    final lines = element
-        .findElements('Line')
-        .map((e) => Line.fromXml(e))
-        .toList();
+    final lines =
+        element.findElements('Line').map((e) => Line.fromXml(e)).toList();
 
     return Area(
       id: element.getAttribute('Id') ?? '',
@@ -66,6 +65,7 @@ class Line {
   final int? puid;
   final String? name;
   final List<Segment> segments;
+  final List<DeviceInstance> devices;
 
   const Line({
     required this.id,
@@ -73,13 +73,17 @@ class Line {
     this.puid,
     this.name,
     this.segments = const [],
+    this.devices = const [],
   });
 
   /// Parse from XML element
   factory Line.fromXml(XmlElement element) {
-    final segments = element
-        .findElements('Segment')
-        .map((e) => Segment.fromXml(e))
+    final segments =
+        element.findElements('Segment').map((e) => Segment.fromXml(e)).toList();
+
+    final devices = element
+        .findElements('DeviceInstance')
+        .map((e) => DeviceInstance.fromXml(e))
         .toList();
 
     return Line(
@@ -88,6 +92,7 @@ class Line {
       puid: int.tryParse(element.getAttribute('Puid') ?? ''),
       name: element.getAttribute('Name'),
       segments: segments,
+      devices: devices,
     );
   }
 
@@ -99,6 +104,7 @@ class Line {
       if (puid != null) 'puid': puid,
       if (name != null) 'name': name,
       'segments': segments.map((s) => s.toJson()).toList(),
+      'devices': devices.map((d) => d.toJson()).toList(),
     };
   }
 
