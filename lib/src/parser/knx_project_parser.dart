@@ -76,12 +76,13 @@ class KnxProjectParser {
   /// Parse installation XML (0.xml, 1.xml, etc.)
   List<Installation> _parseInstallationXml(String xmlContent) {
     final document = XmlDocument.parse(xmlContent);
-    final installationsElement =
-        document.findAllElements('Installations').firstOrNull;
+    final installationElements = document.findAllElements('Installations');
 
-    if (installationsElement == null) {
+    if (installationElements.isEmpty) {
       return [];
     }
+
+    final installationsElement = installationElements.first;
 
     return installationsElement
         .findElements('Installation')
@@ -92,16 +93,20 @@ class KnxProjectParser {
   /// Parse datapoint types from knx_master.xml
   List<DatapointType> _parseDatapointTypes(String xmlContent) {
     final document = XmlDocument.parse(xmlContent);
-    final masterData = document.findAllElements('MasterData').firstOrNull;
+    final masterDataElements = document.findAllElements('MasterData');
 
-    if (masterData == null) {
+    if (masterDataElements.isEmpty) {
       return [];
     }
 
-    final dpTypes = masterData.findAllElements('DatapointTypes').firstOrNull;
-    if (dpTypes == null) {
+    final masterData = masterDataElements.first;
+    final dpTypesElements = masterData.findAllElements('DatapointTypes');
+
+    if (dpTypesElements.isEmpty) {
       return [];
     }
+
+    final dpTypes = dpTypesElements.first;
 
     return dpTypes
         .findElements('DatapointType')
