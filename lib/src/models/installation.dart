@@ -26,7 +26,7 @@ class Installation {
   /// Parse from XML element
   factory Installation.fromXml(XmlElement element) {
     final topology = _parseTopology(element);
-    final (groupAddresses, groupRanges) = _parseGroupAddresses(element);
+    final parseResult = _parseGroupAddresses(element);
     final locations = _parseLocations(element);
 
     return Installation(
@@ -34,8 +34,8 @@ class Installation {
       bcuKey: int.tryParse(element.getAttribute('BCUKey') ?? ''),
       defaultLine: element.getAttribute('DefaultLine'),
       topology: topology,
-      groupAddresses: groupAddresses,
-      groupRanges: groupRanges,
+      groupAddresses: parseResult.groupAddresses,
+      groupRanges: parseResult.groupRanges,
       locations: locations,
     );
   }
@@ -54,12 +54,12 @@ class Installation {
     return Topology(areas: areas);
   }
 
-  static (List<GroupAddress>, List<GroupRange>) _parseGroupAddresses(
+  static _GroupAddressParseResult _parseGroupAddresses(
     XmlElement element,
   ) {
     final gaElement = element.getElement('GroupAddresses');
     if (gaElement == null) {
-      return ([], []);
+      return _GroupAddressParseResult([], []);
     }
 
     final groupAddresses = <GroupAddress>[];
@@ -85,7 +85,7 @@ class Installation {
       parseGroupRanges(rangesRoot);
     }
 
-    return (groupAddresses, groupRanges);
+    return _GroupAddressParseResult(groupAddresses, groupRanges);
   }
 
   static List<Location> _parseLocations(XmlElement element) {
@@ -123,4 +123,13 @@ class Installation {
 
   @override
   String toString() => 'Installation($name)';
+}
+
+/// Helper class to return multiple values from _parseGroupAddresses
+/// Used instead of Records to support Dart SDK >= 2.19.2
+class _GroupAddressParseResult {
+  final List<GroupAddress> groupAddresses;
+  final List<GroupRange> groupRanges;
+
+  const _GroupAddressParseResult(this.groupAddresses, this.groupRanges);
 }
