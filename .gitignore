@@ -1,0 +1,27 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+build/
+pubspec.lock
+*.g.dart
+*.freezed.dart
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Coverage
+coverage/
+.test_coverage.dart
+
+# Generated files
+doc/api/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+*.json
+!example/*.json
