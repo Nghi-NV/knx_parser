@@ -1,6 +1,7 @@
 import 'project_info.dart';
 import 'installation.dart';
 import 'datapoint_type.dart';
+import 'knx_keys.dart';
 
 /// Root model representing a complete KNX project
 class KnxProject {
@@ -13,10 +14,14 @@ class KnxProject {
   /// Datapoint type definitions from knx_master.xml
   final List<DatapointType> datapointTypes;
 
+  /// Keyring data from .knxkeys file (optional)
+  final KnxKeys? knxKeys;
+
   const KnxProject({
     required this.projectInfo,
     required this.installations,
     this.datapointTypes = const [],
+    this.knxKeys,
   });
 
   /// Convert to JSON map
@@ -25,6 +30,7 @@ class KnxProject {
       'project': projectInfo.toJson(),
       'installations': installations.map((i) => i.toJson()).toList(),
       'datapointTypes': datapointTypes.map((d) => d.toJson()).toList(),
+      if (knxKeys != null) 'knxKeys': knxKeys!.toJson(),
     };
   }
 

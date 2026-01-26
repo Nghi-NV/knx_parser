@@ -6,23 +6,40 @@ import '../models/knx_project.dart';
 import '../models/project_info.dart';
 import '../models/installation.dart';
 import '../models/datapoint_type.dart';
+import '../models/knx_keys.dart';
 
 /// Parser for KNX project files (.knxproj)
 class KnxProjectParser {
+  /// Parse a .knxkeys file
+  KnxKeys parseKeys(String xmlContent) {
+    final document = XmlDocument.parse(xmlContent);
+    final keyringElement = document.findAllElements('Keyring').first;
+    return KnxKeys.fromXml(keyringElement);
+  }
+
   /// Parse a .knxproj file and return a KnxProject
-  Future<KnxProject> parse(String filePath) async {
+  /// [password] is optional for encrypted archives
+  Future<KnxProject> parse(
+    String filePath, {
+    String? password,
+    KnxKeys? knxKeys,
+  }) async {
     final file = File(filePath);
     if (!await file.exists()) {
       throw ArgumentError('File not found: $filePath');
     }
 
     final bytes = await file.readAsBytes();
-    return parseBytes(bytes);
+    return parseBytes(bytes, password: password, knxKeys: knxKeys);
   }
 
   /// Parse from bytes (useful for web/memory usage)
-  KnxProject parseBytes(List<int> bytes) {
-    final archive = ZipDecoder().decodeBytes(bytes);
+  KnxProject parseBytes(
+    List<int> bytes, {
+    String? password,
+    KnxKeys? knxKeys,
+  }) {
+    final archive = ZipDecoder().decodeBytes(bytes, password: password);
 
     ProjectInfo? projectInfo;
     List<Installation> installations = [];

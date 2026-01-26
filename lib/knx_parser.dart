@@ -15,3 +15,4 @@ export 'src/models/topology.dart';
 export 'src/models/group_address.dart';
 export 'src/models/location.dart';
 export 'src/models/datapoint_type.dart';
+export 'src/models/knx_keys.dart';
