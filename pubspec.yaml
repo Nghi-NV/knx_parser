@@ -6,7 +6,7 @@ repository: https://github.com/Nghi-NV/knx_parser
 issue_tracker: https://github.com/Nghi-NV/knx_parser/issues
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=2.19.2 <4.0.0'
 
 dependencies:
   archive: ^3.6.1
