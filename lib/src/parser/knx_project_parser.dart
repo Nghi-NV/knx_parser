@@ -39,7 +39,7 @@ class KnxProjectParser {
     String? password,
     KnxKeys? knxKeys,
   }) {
-    final archive = ZipDecoder().decodeBytes(bytes, password: password);
+    final archive = _decodeArchive(bytes, password: password);
 
     ProjectInfo? projectInfo;
     List<Installation> installations = [];
@@ -55,25 +55,34 @@ class KnxProjectParser {
     }
 
     // Parse each file in the archive
-    for (final file in archive) {
-      if (!file.isFile) continue;
+    try {
+      for (final file in archive) {
+        if (!file.isFile) continue;
 
-      final content = utf8.decode(file.content as List<int>);
+        final content = utf8.decode(file.content as List<int>);
 
-      if (file.name.endsWith('project.xml')) {
-        projectInfo = _parseProjectXml(content);
-      } else if (file.name == '$projectId/0.xml' ||
-          (projectId == null && file.name.endsWith('/0.xml'))) {
-        installations = _parseInstallationXml(content);
-      } else if (file.name == 'knx_master.xml') {
-        // Optional: parse datapoint types
-        // This file is large, so we parse it only if needed
-        datapointTypes = _parseDatapointTypes(content);
+        if (file.name.endsWith('project.xml')) {
+          projectInfo = _parseProjectXml(content);
+        } else if (file.name == '$projectId/0.xml' ||
+            (projectId == null && file.name.endsWith('/0.xml'))) {
+          installations = _parseInstallationXml(content);
+          // Optional: parse datapoint types
+          // This file is large, so we parse it only if needed
+          datapointTypes = _parseDatapointTypes(content);
+        }
       }
+    } catch (e) {
+      if (e is FormatException) {
+        throw Exception(
+            'Failed to decode project files. Incorrect password? Original error: $e');
+      }
+      rethrow;
     }
 
     if (projectInfo == null) {
-      throw FormatException('Invalid .knxproj file: project.xml not found');
+      throw FormatException(
+          'Invalid or encrypted .knxproj file: project.xml not found.\n'
+          'If the project is encrypted, please provide the correct password.');
     }
 
     return KnxProject(
@@ -129,6 +138,20 @@ class KnxProjectParser {
         .findElements('DatapointType')
         .map((e) => DatapointType.fromXml(e))
         .toList();
+  }
+
+  Archive _decodeArchive(List<int> bytes, {String? password}) {
+    try {
+      return ZipDecoder().decodeBytes(bytes, password: password);
+    } catch (e) {
+      if (e.toString().contains('Mac verification failed') ||
+          e is FormatException) {
+        // ZipDecoder might throw FormatException on bad password
+        throw Exception(
+            'Failed to decrypt archive. Incorrect password? Original error: $e');
+      }
+      rethrow;
+    }
   }
 
   /// Parse and export to JSON string
