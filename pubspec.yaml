@@ -1,6 +1,6 @@
 name: knx_parser
-description: A Dart library to parse KNX project files (.knxproj) from ETS6 and extract data to JSON format.
-version: 1.2.0
+description: A Dart library to parse KNX project files (.knxproj) from ETS5 and ETS6, including encrypted projects. Extracts data to JSON format.
+version: 1.3.0
 homepage: https://github.com/Nghi-NV/knx_parser
 repository: https://github.com/Nghi-NV/knx_parser
 issue_tracker: https://github.com/Nghi-NV/knx_parser/issues
@@ -11,6 +11,8 @@ environment:
 dependencies:
   archive: ^3.6.1
   xml: ^6.5.0
+  crypto: ^3.0.3
+  pointycastle: ^3.9.1
 
 dev_dependencies:
   lints: ^3.0.0

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-27
+
+### Added
+- **ETS6 encryption support**: Implements PBKDF2-HMAC-SHA256 password derivation for ETS6 encrypted projects.
+- Auto-detection of ETS version based on schema version (ETS6 = schema >= 21).
+- Support for both ETS5 (raw password) and ETS6 (derived password) encrypted projects.
+
+### Dependencies
+- Added `pointycastle: ^3.9.1` for PBKDF2 key derivation.
+- Added `crypto: ^3.0.3` for cryptographic operations.
+
 ## [1.2.0] - 2026-01-26
 
 ### Added

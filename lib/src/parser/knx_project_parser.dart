@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
+import 'package:pointycastle/export.dart';
 import '../models/knx_project.dart';
 import '../models/project_info.dart';
 import '../models/installation.dart';
@@ -9,7 +11,64 @@ import '../models/datapoint_type.dart';
 import '../models/knx_keys.dart';
 
 /// Parser for KNX project files (.knxproj)
+///
+/// Supports both ETS5 and ETS6 encrypted projects.
+/// ETS6 uses PBKDF2-HMAC-SHA256 for password derivation.
 class KnxProjectParser {
+  /// ETS6 salt for PBKDF2 key derivation
+  static const String _ets6Salt = '21.project.ets.knx.org';
+
+  /// Generate ETS6 ZIP password from user password
+  /// Uses PBKDF2-HMAC-SHA256 with specific salt and iterations
+  String _generateEts6ZipPassword(String password) {
+    // Encode password as UTF-16-LE
+    final passwordBytes = _encodeUtf16Le(password);
+
+    // Salt as UTF-8 bytes
+    final saltBytes = Uint8List.fromList(utf8.encode(_ets6Salt));
+
+    // PBKDF2 with HMAC-SHA256
+    final pbkdf2 = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64));
+    pbkdf2.init(Pbkdf2Parameters(saltBytes, 65536, 32));
+
+    final derivedKey = Uint8List(32);
+    pbkdf2.deriveKey(passwordBytes, 0, derivedKey, 0);
+
+    // Return base64 encoded
+    return base64.encode(derivedKey);
+  }
+
+  /// Encode string as UTF-16 Little Endian
+  Uint8List _encodeUtf16Le(String input) {
+    final units = input.codeUnits;
+    final bytes = Uint8List(units.length * 2);
+    for (var i = 0; i < units.length; i++) {
+      bytes[i * 2] = units[i] & 0xFF;
+      bytes[i * 2 + 1] = (units[i] >> 8) & 0xFF;
+    }
+    return bytes;
+  }
+
+  /// Detect if project is ETS6 based on schema version
+  int? _getSchemaVersion(Archive archive) {
+    for (final f in archive) {
+      if (f.isFile && f.name == 'knx_master.xml') {
+        try {
+          final raw = f.content as List<int>;
+          final content = _decodeUtf8WithBom(raw);
+          // Look for xmlns="http://knx.org/xml/project/XX"
+          final match = RegExp(r'xmlns="http://knx\.org/xml/project/(\d+)"')
+              .firstMatch(content);
+          if (match != null) {
+            return int.parse(match.group(1)!);
+          }
+        } catch (_) {}
+        break;
+      }
+    }
+    return null;
+  }
+
   /// Parse a .knxkeys file
   KnxKeys parseKeys(String xmlContent) {
     final document = XmlDocument.parse(xmlContent);
@@ -46,18 +105,34 @@ class KnxProjectParser {
     List<DatapointType> datapointTypes = [];
     String? projectId;
 
-    // Nested P-*.zip (ETS5/6): thử giải nén không mật khẩu. Nếu mã hóa AES (ETS6) thì
-    // cần giải nén P-*.zip bằng ETS, 7-Zip hoặc công cụ hỗ trợ WinZip AES, rồi dùng parseFromExtractedDir.
+    // Detect schema version for ETS6 password derivation
+    final schemaVersion = _getSchemaVersion(archive);
+    final isEts6 = schemaVersion != null && schemaVersion >= 21;
+
+    // Nested P-*.zip (ETS5/6): try to decrypt with appropriate password
     Archive? projectArchive;
     for (final f in archive) {
       if (f.isFile && f.name.endsWith('.zip') && f.name.contains('P-')) {
         final zipBytes = f.content as List<int>;
-        // Try with password first if available
+
+        // Try with password if available
         if (password != null) {
-          try {
-            projectArchive =
-                ZipDecoder().decodeBytes(zipBytes, password: password);
-          } catch (_) {}
+          // ETS6 uses PBKDF2-derived password
+          if (isEts6) {
+            final ets6Password = _generateEts6ZipPassword(password);
+            try {
+              projectArchive =
+                  ZipDecoder().decodeBytes(zipBytes, password: ets6Password);
+            } catch (_) {}
+          }
+
+          // ETS5 uses raw password
+          if (projectArchive == null) {
+            try {
+              projectArchive =
+                  ZipDecoder().decodeBytes(zipBytes, password: password);
+            } catch (_) {}
+          }
         }
 
         // Fallback: try without password (if not provided or failed)
@@ -71,7 +146,7 @@ class KnxProjectParser {
           throw _secureProjectHint(
             'P-*.zip không mở được (có thể đã mã hóa AES). '
             'Nếu có mật khẩu, hãy đảm bảo đã truyền đúng vào hàm parse(..., password: "xxx").\n'
-            'Hoặc giải nén thủ công bằng ETS/7-Zip.',
+            'Schema version: $schemaVersion (ETS6: $isEts6)',
           );
         }
         break;
