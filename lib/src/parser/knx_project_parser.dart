@@ -144,8 +144,8 @@ class KnxProjectParser {
 
         if (projectArchive == null) {
           throw _secureProjectHint(
-            'P-*.zip không mở được (có thể đã mã hóa AES). '
-            'Nếu có mật khẩu, hãy đảm bảo đã truyền đúng vào hàm parse(..., password: "xxx").\n'
+            'Unable to open nested P-*.zip (possibly AES-encrypted).\n'
+            'If the project is protected with a password, please ensure you pass it to parse(..., password: "xxx").\n'
             'Schema version: $schemaVersion (ETS6: $isEts6)',
           );
         }
@@ -183,8 +183,8 @@ class KnxProjectParser {
         } catch (e) {
           if (projectArchive != null) {
             throw _secureProjectHint(
-              'Không thể đọc nội dung file trong P-*.zip (có thể do sai mật khẩu hoặc mã hóa không hỗ trợ). '
-              'Thử kiểm tra lại mật khẩu hoặc giải nén thủ công bằng ETS/7-Zip.',
+              'Failed to read file content inside P-*.zip (wrong password or unsupported encryption).\n'
+              'Please verify the password or try extracting the project with ETS / 7-Zip and use parseFromExtractedDir().',
             );
           }
           rethrow;
@@ -201,7 +201,7 @@ class KnxProjectParser {
           if (from0.isNotEmpty) datapointTypes = from0;
         }
       }
-      // knx_master.xml thường ở archive gốc (không nằm trong P-*.zip)
+      // knx_master.xml is usually at the outer archive level (not inside P-*.zip)
       if (datapointTypes.isEmpty) {
         for (final f in archive) {
           if (f.isFile && f.name == 'knx_master.xml') {
@@ -306,11 +306,12 @@ class KnxProjectParser {
   }
 
   Exception _secureProjectHint(String msg) {
-    return Exception('$msg\nXem thêm: docs/RESEARCH_KNXPROJ_SECURE.md');
+    return Exception('$msg\nSee also: docs/RESEARCH_KNXPROJ_SECURE.md');
   }
 
-  /// Parse từ thư mục đã giải nén (sau khi giải nén P-*.zip bằng ETS, 7-Zip, v.v.).
-  /// Cần có project.xml và (tùy chọn) 0.xml trong [dirPath].
+  /// Parse from a directory that already contains extracted project files
+  /// (e.g. after manually extracting P-*.zip using ETS, 7-Zip, etc.).
+  /// Requires at least project.xml and (optionally) 0.xml in [dirPath].
   Future<KnxProject> parseFromExtractedDir(String dirPath) async {
     final d = io.Directory(dirPath);
     if (!await d.exists()) {
@@ -343,16 +344,41 @@ class KnxProjectParser {
   }
 
   Archive _decodeArchive(List<int> bytes, {String? password}) {
+    // Some ETS5 projects use a plain (non-encrypted) outer .knxproj ZIP, and
+    // only the nested P-*.zip is password-protected. Always passing [password]
+    // here can cause "Mac verification failed"/FormatException even when the
+    // outer ZIP is not encrypted.
+    //
+    // Strategy:
+    // 1. Try to decode WITHOUT a password first.
+    // 2. If that fails with a MAC/Format-related error and [password] is
+    //    provided, try again WITH the password.
+    // 3. If it still fails, throw a clear "Incorrect password?" style error.
     try {
-      return ZipDecoder().decodeBytes(bytes, password: password);
+      // Step 1: prefer decoding without password
+      return ZipDecoder().decodeBytes(bytes);
     } catch (e) {
-      if (e.toString().contains('Mac verification failed') ||
-          e is FormatException) {
-        // ZipDecoder might throw FormatException on bad password
-        throw Exception(
-            'Failed to decrypt archive. Incorrect password? Original error: $e');
+      final isMacOrFormatError =
+          e.toString().contains('Mac verification failed') ||
+              e is FormatException;
+
+      // If we have no password or the error is not MAC/Format-related,
+      // rethrow the original error.
+      if (!isMacOrFormatError || password == null) {
+        rethrow;
       }
-      rethrow;
+
+      // Step 2: retry with password (ETS6 outer-encrypted or special cases)
+      try {
+        return ZipDecoder().decodeBytes(bytes, password: password);
+      } catch (e2) {
+        if (e2.toString().contains('Mac verification failed') ||
+            e2 is FormatException) {
+          throw Exception(
+              'Failed to decrypt archive. Incorrect password? Original error: $e2');
+        }
+        rethrow;
+      }
     }
   }
 

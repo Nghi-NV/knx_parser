@@ -1,34 +1,37 @@
 import 'dart:io';
 import 'package:knx_parser/knx_parser.dart';
 
-/// Ví dụ: project có P-*.zip mã hóa AES (ETS6).
-/// File .knxkeys bên ngoài không dùng để giải mã P-*.zip.
+/// Example: ETS6 project with AES-encrypted P-*.zip.
+/// The external .knxkeys file is not used to decrypt P-*.zip.
 ///
-/// Cách xử lý: giải nén P-*.zip (lấy từ trong .knxproj) bằng ETS hoặc 7-Zip
-/// (nhập mật khẩu ETS nếu có), lưu project.xml và 0.xml vào một thư mục,
-/// rồi dùng parseFromExtractedDir(đường_dẫn).
+/// Workflow:
+/// 1. Extract P-*.zip (from inside .knxproj) using ETS or 7-Zip (enter the
+///    ETS project password if requested) and save project.xml + 0.xml
+///    into a directory.
+/// 2. Use parseFromExtractedDir(<directory_path>) on that directory.
 void main() async {
   final parser = KnxProjectParser();
   const knxproj = '../knxprj_example.knxproj';
-  const outputDir = 'output'; // thư mục chứa project.xml, 0.xml đã giải nén
+  // Directory that will contain extracted project.xml and 0.xml
+  const outputDir = 'output';
 
-  // Bước 1: Thử parse trực tiếp với password
+  // Step 1: try to parse directly with password
   try {
     final project = await parser.parse(knxproj, password: '1');
     print('OK: ${project.projectInfo.name}');
     print('  Installations: ${project.installations.length}');
 
-    // Xuất ra file JSON
+    // Export JSON
     final jsonFile = await parser
         .parseToJsonFile(knxproj, '$outputDir/project.json', password: '1');
     print('  Saved JSON to: ${jsonFile.path}');
-    // return; // Uncomment nếu muốn dừng khi thành công
+    // return; // Uncomment if you want to stop when direct parse succeeds
   } catch (e) {
-    print('Parse trực tiếp lỗi:');
+    print('Direct parse failed:');
     print('  ${e.toString().split("\n").first}');
   }
 
-  // Bước 2: Parse từ thư mục đã giải nén
+  // Step 2: parse from an already extracted directory
   if (await Directory(outputDir).exists()) {
     try {
       final project = await parser.parseFromExtractedDir(outputDir);
@@ -36,14 +39,15 @@ void main() async {
       print('  Installations: ${project.installations.length}');
       return;
     } catch (e) {
-      print('\nparseFromExtractedDir($outputDir) lỗi: $e');
+      print('\nparseFromExtractedDir($outputDir) failed: $e');
     }
   }
 
-  print('\nHướng dẫn:');
-  print('  1. Mở .knxproj bằng 7-Zip (hoặc ETS), tìm P-*.zip.');
-  print('  2. Giải nén P-*.zip (nhập mật khẩu ETS nếu được hỏi) vào thư mục.');
+  print('\nHow to use this example:');
+  print('  1. Open the .knxproj with 7-Zip (or ETS) and locate P-*.zip.');
   print(
-      '  3. Đặt outputDir = đường dẫn thư mục đó (có project.xml, 0.xml) rồi chạy lại.');
-  print('  Xem: docs/RESEARCH_KNXPROJ_SECURE.md');
+      '  2. Extract P-*.zip (enter the ETS password if requested) into a directory.');
+  print(
+      '  3. Set outputDir to that directory (containing project.xml and 0.xml) and run again.');
+  print('  See also: docs/RESEARCH_KNXPROJ_SECURE.md');
 }
