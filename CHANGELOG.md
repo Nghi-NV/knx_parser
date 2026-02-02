@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-02
+
+### Added
+- **Web support**: Library can be compiled for web (dart compile js). Use `parseBytes(List<int> bytes, ...)` in the browser; `parse(String filePath)` and file-based APIs remain VM-only via conditional import.
+- `io_stub.dart` for web builds (stub for dart:io when `dart.library.html` is defined).
+
+### Changed
+- Parser uses conditional import `dart:io` / `io_stub` so the same code runs on VM and web.
+- `File.exists` / `Directory.exists` usage aligned with dart:io API (getter, no parentheses).
+
 ## [1.3.0] - 2026-01-27
 
 ### Added

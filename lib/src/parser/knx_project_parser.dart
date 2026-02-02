@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) 'io_stub.dart' as io;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
@@ -83,7 +83,7 @@ class KnxProjectParser {
     String? password,
     KnxKeys? knxKeys,
   }) async {
-    final file = File(filePath);
+    final file = io.File(filePath);
     if (!await file.exists()) {
       throw ArgumentError('File not found: $filePath');
     }
@@ -312,14 +312,14 @@ class KnxProjectParser {
   /// Parse từ thư mục đã giải nén (sau khi giải nén P-*.zip bằng ETS, 7-Zip, v.v.).
   /// Cần có project.xml và (tùy chọn) 0.xml trong [dirPath].
   Future<KnxProject> parseFromExtractedDir(String dirPath) async {
-    final d = Directory(dirPath);
+    final d = io.Directory(dirPath);
     if (!await d.exists()) {
       throw ArgumentError('Directory not found: $dirPath');
     }
-    File? projectXml;
-    File? zeroXml;
+    io.File? projectXml;
+    io.File? zeroXml;
     for (final e in d.listSync()) {
-      if (e is File) {
+      if (e is io.File) {
         if (e.path.endsWith('project.xml')) projectXml = e;
         if (e.path.endsWith('0.xml')) zeroXml = e;
       }
@@ -369,14 +369,14 @@ class KnxProjectParser {
   }
 
   /// Parse and save to JSON file
-  Future<File> parseToJsonFile(
+  Future<io.File> parseToJsonFile(
     String knxprojPath,
     String outputPath, {
     String? password,
   }) async {
     final jsonContent =
         await parseToJson(knxprojPath, pretty: true, password: password);
-    final outputFile = File(outputPath);
+    final outputFile = io.File(outputPath);
     await outputFile.writeAsString(jsonContent);
     return outputFile;
   }
