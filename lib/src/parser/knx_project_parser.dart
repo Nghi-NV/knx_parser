@@ -227,8 +227,15 @@ class KnxProjectParser {
           'If the project is encrypted, please provide the correct password.');
     }
 
+    // Add ETS version info to project
+    final etsVersion = isEts6 ? 'ETS6' : 'ETS5';
+    final updatedProjectInfo = projectInfo.copyWith(
+      etsVersion: etsVersion,
+      schemaVersion: schemaVersion,
+    );
+
     return KnxProject(
-      projectInfo: projectInfo,
+      projectInfo: updatedProjectInfo,
       installations: installations,
       datapointTypes: datapointTypes,
     );

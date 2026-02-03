@@ -81,10 +81,18 @@ class Line {
     final segments =
         element.findElements('Segment').map((e) => Segment.fromXml(e)).toList();
 
-    final devices = element
+    // ETS5: DeviceInstance directly under Line
+    // ETS6: DeviceInstance under Segment
+    final directDevices = element
         .findElements('DeviceInstance')
         .map((e) => DeviceInstance.fromXml(e))
         .toList();
+
+    // Collect devices from all segments (ETS6 format)
+    final segmentDevices = segments.expand((s) => s.devices).toList();
+
+    // Combine both sources
+    final allDevices = [...directDevices, ...segmentDevices];
 
     return Line(
       id: element.getAttribute('Id') ?? '',
@@ -92,7 +100,7 @@ class Line {
       puid: int.tryParse(element.getAttribute('Puid') ?? ''),
       name: element.getAttribute('Name'),
       segments: segments,
-      devices: devices,
+      devices: allDevices,
     );
   }
 
@@ -118,21 +126,30 @@ class Segment {
   final int number;
   final String? mediumTypeRefId;
   final int? puid;
+  final List<DeviceInstance> devices;
 
   const Segment({
     required this.id,
     required this.number,
     this.mediumTypeRefId,
     this.puid,
+    this.devices = const [],
   });
 
   /// Parse from XML element
   factory Segment.fromXml(XmlElement element) {
+    // ETS6: DeviceInstance elements are nested inside Segment
+    final devices = element
+        .findElements('DeviceInstance')
+        .map((e) => DeviceInstance.fromXml(e))
+        .toList();
+
     return Segment(
       id: element.getAttribute('Id') ?? '',
       number: int.tryParse(element.getAttribute('Number') ?? '') ?? 0,
       mediumTypeRefId: element.getAttribute('MediumTypeRefId'),
       puid: int.tryParse(element.getAttribute('Puid') ?? ''),
+      devices: devices,
     );
   }
 
@@ -143,6 +160,8 @@ class Segment {
       'number': number,
       if (mediumTypeRefId != null) 'mediumTypeRefId': mediumTypeRefId,
       if (puid != null) 'puid': puid,
+      if (devices.isNotEmpty)
+        'devices': devices.map((d) => d.toJson()).toList(),
     };
   }
 

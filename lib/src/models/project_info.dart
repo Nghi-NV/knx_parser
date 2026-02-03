@@ -11,6 +11,12 @@ class ProjectInfo {
   final String? guid;
   final String? projectType;
 
+  /// ETS version: 'ETS5' or 'ETS6'
+  final String? etsVersion;
+
+  /// Schema version from knx_master.xml (e.g., 20 for ETS5, 21+ for ETS6)
+  final int? schemaVersion;
+
   const ProjectInfo({
     required this.id,
     required this.name,
@@ -20,7 +26,28 @@ class ProjectInfo {
     this.comment,
     this.guid,
     this.projectType,
+    this.etsVersion,
+    this.schemaVersion,
   });
+
+  /// Create a copy with updated values
+  ProjectInfo copyWith({
+    String? etsVersion,
+    int? schemaVersion,
+  }) {
+    return ProjectInfo(
+      id: id,
+      name: name,
+      groupAddressStyle: groupAddressStyle,
+      lastModified: lastModified,
+      projectStart: projectStart,
+      comment: comment,
+      guid: guid,
+      projectType: projectType,
+      etsVersion: etsVersion ?? this.etsVersion,
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+    );
+  }
 
   /// Parse from XML element
   factory ProjectInfo.fromXml(XmlElement projectElement) {
@@ -55,6 +82,8 @@ class ProjectInfo {
       'id': id,
       'name': name,
       'groupAddressStyle': groupAddressStyle,
+      if (etsVersion != null) 'etsVersion': etsVersion,
+      if (schemaVersion != null) 'schemaVersion': schemaVersion,
       if (lastModified != null) 'lastModified': lastModified!.toIso8601String(),
       if (projectStart != null) 'projectStart': projectStart!.toIso8601String(),
       if (comment != null && comment!.isNotEmpty) 'comment': comment,

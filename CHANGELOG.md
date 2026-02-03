@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-03
+
+### Added
+- **ETS version detection**: Added `etsVersion` ("ETS5" or "ETS6") and `schemaVersion` fields to `ProjectInfo` and JSON output.
+- **ETS6 Segment device support**: Fixed parsing of `DeviceInstance` elements nested within `Segment` tags (ETS6 structure).
+
+### Changed
+- `Segment` class now includes a `devices` property to support ETS6 project structure.
+- `Line.fromXml` now combines devices from both direct children (ETS5) and Segment children (ETS6).
+
 ## [1.5.0] - 2026-02-02
 
 ### Changed
