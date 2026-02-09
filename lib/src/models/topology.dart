@@ -11,6 +11,13 @@ class Topology {
   Map<String, dynamic> toJson() {
     return {'areas': areas.map((a) => a.toJson()).toList()};
   }
+
+  /// Create a copy with device names updated from product catalog
+  Topology copyWithProductCatalog(Map<String, String> productCatalog) {
+    final updatedAreas =
+        areas.map((a) => a.copyWithProductCatalog(productCatalog)).toList();
+    return Topology(areas: updatedAreas);
+  }
 }
 
 /// KNX Area (first level of topology)
@@ -52,6 +59,19 @@ class Area {
       if (name != null) 'name': name,
       'lines': lines.map((l) => l.toJson()).toList(),
     };
+  }
+
+  /// Create a copy with device names updated from product catalog
+  Area copyWithProductCatalog(Map<String, String> productCatalog) {
+    final updatedLines =
+        lines.map((l) => l.copyWithProductCatalog(productCatalog)).toList();
+    return Area(
+      id: id,
+      address: address,
+      puid: puid,
+      name: name,
+      lines: updatedLines,
+    );
   }
 
   @override
@@ -116,6 +136,24 @@ class Line {
     };
   }
 
+  /// Create a copy with device names updated from product catalog
+  Line copyWithProductCatalog(Map<String, String> productCatalog) {
+    final updatedDevices = devices.map((device) {
+      final productName = productCatalog[device.productRefId];
+      return productName != null ? device.copyWithName(productName) : device;
+    }).toList();
+    final updatedSegments =
+        segments.map((s) => s.copyWithProductCatalog(productCatalog)).toList();
+    return Line(
+      id: id,
+      address: address,
+      puid: puid,
+      name: name,
+      segments: updatedSegments,
+      devices: updatedDevices,
+    );
+  }
+
   @override
   String toString() => 'Line($id, address=$address)';
 }
@@ -163,6 +201,21 @@ class Segment {
       if (devices.isNotEmpty)
         'devices': devices.map((d) => d.toJson()).toList(),
     };
+  }
+
+  /// Create a copy with device names updated from product catalog
+  Segment copyWithProductCatalog(Map<String, String> productCatalog) {
+    final updatedDevices = devices.map((device) {
+      final productName = productCatalog[device.productRefId];
+      return productName != null ? device.copyWithName(productName) : device;
+    }).toList();
+    return Segment(
+      id: id,
+      number: number,
+      mediumTypeRefId: mediumTypeRefId,
+      puid: puid,
+      devices: updatedDevices,
+    );
   }
 
   @override

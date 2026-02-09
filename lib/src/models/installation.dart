@@ -121,6 +121,19 @@ class Installation {
     };
   }
 
+  /// Create a copy with device names updated from product catalog
+  Installation copyWithProductCatalog(Map<String, String> productCatalog) {
+    return Installation(
+      name: name,
+      bcuKey: bcuKey,
+      defaultLine: defaultLine,
+      topology: topology.copyWithProductCatalog(productCatalog),
+      groupAddresses: groupAddresses,
+      groupRanges: groupRanges,
+      locations: locations,
+    );
+  }
+
   @override
   String toString() => 'Installation($name)';
 }

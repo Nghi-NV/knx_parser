@@ -104,6 +104,8 @@ class KnxProjectParser {
     List<Installation> installations = [];
     List<DatapointType> datapointTypes = [];
     String? projectId;
+    // Product catalog: productRefId -> product name (Text attribute)
+    final Map<String, String> productCatalog = {};
 
     // Detect schema version for ETS6 password derivation
     final schemaVersion = _getSchemaVersion(archive);
@@ -201,6 +203,27 @@ class KnxProjectParser {
           if (from0.isNotEmpty) datapointTypes = from0;
         }
       }
+
+      // Parse M-*/Hardware.xml from outer archive for product catalog
+      for (final f in archive) {
+        if (f.isFile && f.name.contains('/Hardware.xml')) {
+          try {
+            final raw = f.content as List<int>;
+            final hwContent = _decodeUtf8WithBom(raw);
+            final products = _parseProductCatalog(hwContent);
+            productCatalog.addAll(products);
+          } catch (_) {}
+        }
+      }
+
+      // Merge product names into devices
+      if (productCatalog.isNotEmpty) {
+        installations = _mergeProductNamesIntoInstallations(
+          installations,
+          productCatalog,
+        );
+      }
+
       // knx_master.xml is usually at the outer archive level (not inside P-*.zip)
       if (datapointTypes.isEmpty) {
         for (final f in archive) {
@@ -213,18 +236,18 @@ class KnxProjectParser {
           }
         }
       }
+
+      if (projectInfo == null) {
+        throw FormatException(
+            'Invalid or encrypted .knxproj file: project.xml not found.\n'
+            'If the project is encrypted, please provide the correct password.');
+      }
     } catch (e) {
       if (e is FormatException) {
         throw Exception(
             'Failed to decode project files. Incorrect password? Original error: $e');
       }
       rethrow;
-    }
-
-    if (projectInfo == null) {
-      throw FormatException(
-          'Invalid or encrypted .knxproj file: project.xml not found.\n'
-          'If the project is encrypted, please provide the correct password.');
     }
 
     // Add ETS version info to project
@@ -412,5 +435,34 @@ class KnxProjectParser {
     final outputFile = io.File(outputPath);
     await outputFile.writeAsString(jsonContent);
     return outputFile;
+  }
+
+  /// Parse product catalog from Hardware.xml
+  /// Returns a map of productRefId -> product name (Text attribute)
+  Map<String, String> _parseProductCatalog(String xmlContent) {
+    final result = <String, String>{};
+    try {
+      final document = XmlDocument.parse(xmlContent);
+      // Find all Product elements
+      final products = document.findAllElements('Product');
+      for (final product in products) {
+        final id = product.getAttribute('Id');
+        final text = product.getAttribute('Text');
+        if (id != null && text != null && text.isNotEmpty) {
+          result[id] = text;
+        }
+      }
+    } catch (_) {}
+    return result;
+  }
+
+  /// Merge product names into installations' devices
+  List<Installation> _mergeProductNamesIntoInstallations(
+    List<Installation> installations,
+    Map<String, String> productCatalog,
+  ) {
+    return installations.map((installation) {
+      return installation.copyWithProductCatalog(productCatalog);
+    }).toList();
   }
 }

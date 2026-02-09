@@ -61,6 +61,20 @@ class DeviceInstance {
     };
   }
 
+  /// Create a copy with updated name from product catalog
+  DeviceInstance copyWithName(String? newName) {
+    return DeviceInstance(
+      id: id,
+      address: address,
+      name: newName ?? name,
+      productRefId: productRefId,
+      hardware2ProgramRefId: hardware2ProgramRefId,
+      puid: puid,
+      comObjectInstanceRefs: comObjectInstanceRefs,
+      securityToolKey: securityToolKey,
+    );
+  }
+
   @override
   String toString() => 'DeviceInstance($id, address=$address)';
 }
