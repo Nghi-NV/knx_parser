@@ -8,6 +8,7 @@ class Location {
   final int? puid;
   final String? description;
   final Location? parent;
+  final List<String> deviceInstanceIds;
 
   const Location({
     required this.id,
@@ -16,10 +17,19 @@ class Location {
     this.puid,
     this.description,
     this.parent,
+    this.deviceInstanceIds = const [],
   });
 
   /// Parse from XML element
   factory Location.fromXml(XmlElement element, {Location? parent}) {
+    // Parse DeviceInstanceRef children
+    final deviceIds = element
+        .findElements('DeviceInstanceRef')
+        .map((ref) => ref.getAttribute('RefId'))
+        .where((id) => id != null && id.isNotEmpty)
+        .cast<String>()
+        .toList();
+
     return Location(
       id: element.getAttribute('Id') ?? '',
       type: element.getAttribute('Type') ?? 'Unknown',
@@ -27,6 +37,7 @@ class Location {
       puid: int.tryParse(element.getAttribute('Puid') ?? ''),
       description: element.getAttribute('Description'),
       parent: parent,
+      deviceInstanceIds: deviceIds,
     );
   }
 
@@ -39,9 +50,12 @@ class Location {
       if (puid != null) 'puid': puid,
       if (description != null) 'description': description,
       if (parent != null) 'parentId': parent!.id,
+      if (deviceInstanceIds.isNotEmpty)
+        'deviceInstanceIds': deviceInstanceIds,
     };
   }
 
   @override
   String toString() => 'Location($type: "$name")';
 }
+

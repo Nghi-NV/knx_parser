@@ -10,8 +10,10 @@ A Dart library to parse KNX project files (`.knxproj`) from ETS6 and extract dat
 
 - 📦 Parse `.knxproj` files (ZIP-based XML format)
 - 🏗️ Extract project information, topology, group addresses, and locations
+- 🏠 Device-to-room mapping via `deviceInstanceIds` in locations
 - 📊 Parse datapoint types (DPT) from knx_master.xml
-- 💾 Export to structured JSON format
+- 💾 Export to structured JSON (nested or flat format)
+- 🔒 Security detection (`hasSecure`) with GA keys and device tool keys
 - 🔄 Support for hierarchical group ranges
 
 ## Installation
@@ -77,9 +79,12 @@ for (final installation in project.installations) {
     print('${ga.formattedAddress} - ${ga.name}');
   }
   
-  // Locations
+  // Locations with device mapping
   for (final loc in installation.locations) {
     print('${loc.type}: ${loc.name}');
+    if (loc.deviceInstanceIds.isNotEmpty) {
+      print('  Devices: ${loc.deviceInstanceIds}');
+    }
   }
 }
 
@@ -94,14 +99,58 @@ for (final dpt in project.datapointTypes) {
 ```dart
 final parser = KnxProjectParser();
 
-// Get JSON string
+// Nested format (original)
 final json = await parser.parseToJson('project.knxproj');
-
-// Save to file
 await parser.parseToJsonFile('project.knxproj', 'output.json');
+
+// Flat format (organized sections)
+final flatJson = await parser.parseToFlatJson('project.knxproj', password: '1');
+await parser.parseToFlatJsonFile('project.knxproj', 'output_flat.json', password: '1');
+
+// Or via model
+final project = await parser.parse('project.knxproj', password: '1');
+final flatMap = project.toFlatJson(); // Map<String, dynamic>
 ```
 
-## JSON Output Structure
+## JSON Output Formats
+
+### Flat Format (`toFlatJson()`)
+
+Organized, easy-to-consume format with separate lists:
+
+```json
+{
+  "projectName": "Lumi Project",
+  "projectId": "P-048F",
+  "groupAddressStyle": "ThreeLevel",
+  "lastModified": "2026-03-10T10:04:29Z",
+  "etsVersion": "ETS6",
+  "schemaVersion": 23,
+  "hasSecure": true,
+  "floors": [
+    { "id": "...", "name": "Tầng 1", "roomIds": ["BP-4", "BP-5"] }
+  ],
+  "rooms": [
+    { "id": "...", "name": "Phòng Khách", "floorId": "...", "deviceInstanceIds": ["DI-5"] }
+  ],
+  "devices": [
+    { "id": "...", "address": 1, "name": "...", "comObjects": [...] }
+  ],
+  "groupAddresses": [
+    { "id": "...", "address": 1, "formattedAddress": "0/0/1", "name": "GA1", "datapointType": "DPST-1-1", "key": "..." }
+  ],
+  "groupRanges": [...],
+  "datapointTypes": [...],
+  "secureKeys": {
+    "gaKeys": [ { "gaId": "...", "formattedAddress": "0/0/1", "name": "GA1", "key": "..." } ],
+    "deviceToolKeys": [ { "deviceId": "...", "toolKey": "..." } ]
+  }
+}
+```
+
+### Nested Format (`toJson()`)
+
+Original hierarchical format:
 
 ```json
 {
@@ -114,19 +163,11 @@ await parser.parseToJsonFile('project.knxproj', 'output.json');
   },
   "installations": [
     {
-      "name": "",
-      "topology": {
-        "areas": [...]
-      },
-      "groupAddresses": [
-        {
-          "id": "P-0310-0_GA-1",
-          "address": 1,
-          "formattedAddress": "0/0/1",
-          "name": "foo"
-        }
-      ],
-      "locations": [...]
+      "topology": { "areas": [...] },
+      "groupAddresses": [...],
+      "locations": [
+        { "id": "...", "type": "Room", "name": "Phòng Khách", "deviceInstanceIds": ["DI-5"] }
+      ]
     }
   ],
   "datapointTypes": [...]
@@ -151,12 +192,14 @@ dart test
 
 | Element | Description |
 |---------|-------------|
-| **Project** | Project metadata (name, GUID, dates) |
+| **Project** | Project metadata (name, GUID, dates, ETS version) |
 | **Topology** | Network structure (Areas, Lines, Segments) |
-| **GroupAddresses** | Group addresses with formatted display |
+| **Devices** | Device instances with product names and comObjects |
+| **GroupAddresses** | Group addresses with formatted display and DPT |
 | **GroupRanges** | Hierarchical address groupings |
-| **Locations** | Physical locations (Buildings, Spaces) |
-| **DatapointTypes** | DPT definitions (DPT-1 to DPT-30+) |
+| **Locations** | Buildings, Floors, Rooms with `deviceInstanceIds` |
+| **DatapointTypes** | DPT definitions (DPT-1 to DPT-275+) |
+| **Security** | GA keys, device tool keys, backbone keys |
 
 ### Secure KNX Projects (ETS6)
 

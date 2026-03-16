@@ -412,7 +412,7 @@ class KnxProjectParser {
     }
   }
 
-  /// Parse and export to JSON string
+  /// Parse and export to JSON string (original nested format)
   Future<String> parseToJson(
     String filePath, {
     bool pretty = true,
@@ -424,7 +424,7 @@ class KnxProjectParser {
     return encoder.convert(project.toJson());
   }
 
-  /// Parse and save to JSON file
+  /// Parse and save to JSON file (original nested format)
   Future<io.File> parseToJsonFile(
     String knxprojPath,
     String outputPath, {
@@ -432,6 +432,38 @@ class KnxProjectParser {
   }) async {
     final jsonContent =
         await parseToJson(knxprojPath, pretty: true, password: password);
+    final outputFile = io.File(outputPath);
+    await outputFile.writeAsString(jsonContent);
+    return outputFile;
+  }
+
+  /// Parse and export to flat JSON string (organized sections)
+  Future<String> parseToFlatJson(
+    String filePath, {
+    bool pretty = true,
+    String? password,
+    KnxKeys? knxKeys,
+  }) async {
+    final project =
+        await parse(filePath, password: password, knxKeys: knxKeys);
+    final encoder =
+        pretty ? const JsonEncoder.withIndent('  ') : const JsonEncoder();
+    return encoder.convert(project.toFlatJson());
+  }
+
+  /// Parse and save to flat JSON file (organized sections)
+  Future<io.File> parseToFlatJsonFile(
+    String knxprojPath,
+    String outputPath, {
+    String? password,
+    KnxKeys? knxKeys,
+  }) async {
+    final jsonContent = await parseToFlatJson(
+      knxprojPath,
+      pretty: true,
+      password: password,
+      knxKeys: knxKeys,
+    );
     final outputFile = io.File(outputPath);
     await outputFile.writeAsString(jsonContent);
     return outputFile;

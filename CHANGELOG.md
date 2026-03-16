@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.8.0] - 2026-03-16
+
+### Added
+- **Flat JSON output format**: New `toFlatJson()` method on `KnxProject` produces an organized, flat JSON with separate lists for `floors`, `rooms`, `devices`, `groupAddresses`, `datapointTypes`, and `secureKeys`.
+- **Device-to-room mapping**: `Location` model now includes `deviceInstanceIds` field, parsed from `DeviceInstanceRef` elements inside `Space` XML nodes.
+- **Security detection**: `hasSecure` boolean in flat JSON output, auto-detected from GA keys and device security tool keys.
+- `parseToFlatJson()` and `parseToFlatJsonFile()` convenience methods on `KnxProjectParser`.
+
+### Changed
+- `Location.fromXml()` now parses `DeviceInstanceRef` children.
+- `Location.toJson()` includes `deviceInstanceIds` when non-empty.
 
 ## [1.7.1] - 2026-02-09
 
