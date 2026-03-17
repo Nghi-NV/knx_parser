@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.10.0] - 2026-03-17
+
+### Added
+- **Topology flat lists**: `KnxArea` and `KnxLine` classes with `areas` and `lines` lists in `KnxFlatProject`.
+- **Building level**: `KnxBuilding` class for multi-building projects, with `buildings` list and `floorIds`.
+- **Device-room mapping**: `KnxDevice` now includes `roomId`, `roomName`, `areaId`, `areaName`, `lineId`, `lineName`.
+- **Rich cross-references**: `KnxDeviceRef` lightweight reference class used in `KnxRoom.devices` and `KnxGroupAddress.devices` (includes `formattedAddress` and `name`).
+- **`fromJson()` on all models**: Full JSON deserialization support for `KnxFlatProject` and all nested classes, plus `ComObjectInstanceRef`, `DatapointType`, `DatapointSubtype`, `BackboneKey`, `GroupKey`, `DeviceKey`.
+- **Device formatted address**: `KnxDevice.formattedAddress` in `area.line.device` format (e.g., `1.1.3`).
+- **DPT format**: `datapointType` converted from `DPST-9-1` to `9.001` format.
+- **GA-device mapping**: `KnxGroupAddress.devices` shows linked devices via comObject cross-reference.
+
+### Changed
+- `KnxFloor.parentId` renamed to `KnxFloor.buildingId`.
+- `KnxRoom.deviceInstanceIds` replaced with `KnxRoom.devices` (`List<KnxDeviceRef>`).
+- `KnxGroupAddress.deviceIds` replaced with `KnxGroupAddress.devices` (`List<KnxDeviceRef>`).
+
 ## [1.9.0] - 2026-03-17
 
 ### Added

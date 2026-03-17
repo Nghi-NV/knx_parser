@@ -99,6 +99,14 @@ class ComObjectInstanceRef {
     );
   }
 
+  factory ComObjectInstanceRef.fromJson(Map<String, dynamic> json) {
+    return ComObjectInstanceRef(
+      refId: json['refId'] as String?,
+      text: json['text'] as String?,
+      links: json['links'] as String?,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       if (refId != null) 'refId': refId,

@@ -95,6 +95,14 @@ class BackboneKey {
     );
   }
 
+  factory BackboneKey.fromJson(Map<String, dynamic> json) {
+    return BackboneKey(
+      multicastAddress: json['multicastAddress'] as String,
+      key: json['key'] as String?,
+      latency: json['latency'] as int?,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'multicastAddress': multicastAddress,
@@ -115,6 +123,13 @@ class GroupKey {
     return GroupKey(
       address: int.parse(element.getAttribute('Address') ?? '0'),
       key: element.getAttribute('Key') ?? '',
+    );
+  }
+
+  factory GroupKey.fromJson(Map<String, dynamic> json) {
+    return GroupKey(
+      address: json['address'] as int,
+      key: json['key'] as String,
     );
   }
 
@@ -147,6 +162,17 @@ class DeviceKey {
       fdsk: element.getAttribute('FDSK'),
       serialNumber: element.getAttribute('SerialNumber'),
       authenticationCode: element.getAttribute('AuthenticationCode'),
+    );
+  }
+
+  factory DeviceKey.fromJson(Map<String, dynamic> json) {
+    return DeviceKey(
+      individualAddress: json['individualAddress'] as String,
+      toolKey: json['toolKey'] as String?,
+      sequenceNumber: json['sequenceNumber'] as String?,
+      fdsk: json['fdsk'] as String?,
+      serialNumber: json['serialNumber'] as String?,
+      authenticationCode: json['authenticationCode'] as String?,
     );
   }
 

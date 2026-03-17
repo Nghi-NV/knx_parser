@@ -44,33 +44,100 @@ class KnxProject {
     final allLocations = <Location>[];
     final allGroupAddresses = <GroupAddress>[];
     final allGroupRanges = <GroupRange>[];
-    final allDevices = <DeviceInstance>[];
+
+    // Device entries: device, formattedAddress, areaId, areaName, lineId, lineName
+    final deviceEntries = <_DeviceEntry>[];
+    final flatAreas = <KnxArea>[];
+    final flatLines = <KnxLine>[];
 
     for (final inst in installations) {
       allLocations.addAll(inst.locations);
       allGroupAddresses.addAll(inst.groupAddresses);
       allGroupRanges.addAll(inst.groupRanges);
 
-      // Collect devices from topology
       for (final area in inst.topology.areas) {
+        final lineIds = <String>[];
         for (final line in area.lines) {
-          allDevices.addAll(line.devices);
+          lineIds.add(line.id);
+          final deviceIds = <String>[];
+          for (final device in line.devices) {
+            final formatted =
+                '${area.address}.${line.address}.${device.address}';
+            deviceEntries.add(_DeviceEntry(
+              device: device,
+              formattedAddress: formatted,
+              areaId: area.id,
+              areaName: area.name,
+              lineId: line.id,
+              lineName: line.name,
+            ));
+            deviceIds.add(device.id);
+          }
+          flatLines.add(KnxLine(
+            id: line.id,
+            address: line.address,
+            name: line.name,
+            puid: line.puid,
+            areaId: area.id,
+            deviceIds: deviceIds,
+          ));
         }
+        flatAreas.add(KnxArea(
+          id: area.id,
+          address: area.address,
+          name: area.name,
+          puid: area.puid,
+          lineIds: lineIds,
+        ));
       }
     }
 
-    // Separate locations into floors and rooms
+    // Build device lookup: deviceId -> formattedAddress, name
+    final deviceRefMap = <String, KnxDeviceRef>{};
+    for (final entry in deviceEntries) {
+      deviceRefMap[entry.device.id] = KnxDeviceRef(
+        id: entry.device.id,
+        formattedAddress: entry.formattedAddress,
+        name: entry.device.name,
+      );
+    }
+
+    // Separate locations into buildings, floors and rooms
+    final buildingLocations =
+        allLocations.where((l) => l.type == 'Building');
     final floorLocations = allLocations.where((l) => l.type == 'Floor');
     final roomLocations = allLocations.where((l) => l.type == 'Room');
 
+    // Build device → room reverse lookup
+    final deviceToRoom = <String, Location>{};
+    for (final room in roomLocations) {
+      for (final devId in room.deviceInstanceIds) {
+        deviceToRoom[devId] = room;
+      }
+    }
+
     // Detect hasSecure
-    final hasGaKeys = allGroupAddresses.any(
-        (ga) => ga.key != null && ga.key!.isNotEmpty);
-    final hasDeviceKeys = allDevices.any(
-        (d) => d.securityToolKey != null && d.securityToolKey!.isNotEmpty);
+    final hasGaKeys = allGroupAddresses
+        .any((ga) => ga.key != null && ga.key!.isNotEmpty);
+    final hasDeviceKeys = deviceEntries.any(
+        (e) => e.device.securityToolKey != null && e.device.securityToolKey!.isNotEmpty);
     final hasKnxKeys = knxKeys != null &&
         (knxKeys!.groupKeys.isNotEmpty || knxKeys!.deviceKeys.isNotEmpty);
     final hasSecure = hasGaKeys || hasDeviceKeys || hasKnxKeys;
+
+    // Build buildings
+    final buildings = buildingLocations.map((building) {
+      final buildingFloorIds = floorLocations
+          .where((f) => f.parent?.id == building.id)
+          .map((f) => f.id)
+          .toList();
+      return KnxBuilding(
+        id: building.id,
+        name: building.name,
+        puid: building.puid,
+        floorIds: buildingFloorIds,
+      );
+    }).toList();
 
     // Build floors
     final floors = floorLocations.map((floor) {
@@ -82,28 +149,41 @@ class KnxProject {
         id: floor.id,
         name: floor.name,
         puid: floor.puid,
-        parentId: floor.parent?.id,
+        buildingId: floor.parent?.id,
         roomIds: floorRoomIds,
       );
     }).toList();
 
-    // Build rooms
+    // Build rooms with device refs
     final rooms = roomLocations.map((room) {
+      final roomDeviceRefs = room.deviceInstanceIds
+          .where((id) => deviceRefMap.containsKey(id))
+          .map((id) => deviceRefMap[id]!)
+          .toList();
       return KnxRoom(
         id: room.id,
         name: room.name,
         puid: room.puid,
         floorId: room.parent?.id,
-        deviceInstanceIds: room.deviceInstanceIds,
+        devices: roomDeviceRefs,
       );
     }).toList();
 
-    // Build devices
-    final devices = allDevices.map((d) {
+    // Build devices with room/area/line info
+    final devices = deviceEntries.map((entry) {
+      final d = entry.device;
+      final room = deviceToRoom[d.id];
       return KnxDevice(
         id: d.id,
         address: d.address,
+        formattedAddress: entry.formattedAddress,
         name: d.name,
+        roomId: room?.id,
+        roomName: room?.name,
+        areaId: entry.areaId,
+        areaName: entry.areaName,
+        lineId: entry.lineId,
+        lineName: entry.lineName,
         productRefId: d.productRefId,
         hardware2ProgramRefId: d.hardware2ProgramRefId,
         puid: d.puid,
@@ -113,19 +193,19 @@ class KnxProject {
     }).toList();
 
     // Build GA-to-device mapping from comObject links
-    final gaToDeviceIds = <String, List<String>>{};
-    for (final device in allDevices) {
-      for (final comObj in device.comObjectInstanceRefs) {
+    final gaToDeviceRefs = <String, List<KnxDeviceRef>>{};
+    for (final entry in deviceEntries) {
+      for (final comObj in entry.device.comObjectInstanceRefs) {
         if (comObj.links != null) {
           for (final link in comObj.links!.split(' ')) {
             final trimmed = link.trim();
             if (trimmed.isEmpty) continue;
-            // Find matching GA by suffix (link is short id like "GA-1")
             for (final ga in allGroupAddresses) {
               if (ga.id.endsWith('_$trimmed') || ga.id == trimmed) {
-                gaToDeviceIds.putIfAbsent(ga.id, () => []);
-                if (!gaToDeviceIds[ga.id]!.contains(device.id)) {
-                  gaToDeviceIds[ga.id]!.add(device.id);
+                gaToDeviceRefs.putIfAbsent(ga.id, () => []);
+                if (!gaToDeviceRefs[ga.id]!
+                    .any((r) => r.id == entry.device.id)) {
+                  gaToDeviceRefs[ga.id]!.add(deviceRefMap[entry.device.id]!);
                 }
                 break;
               }
@@ -145,7 +225,7 @@ class KnxProject {
         datapointType: _formatDpt(ga.datapointType),
         rangeName: ga.range?.name,
         key: ga.key,
-        deviceIds: gaToDeviceIds[ga.id] ?? const [],
+        devices: gaToDeviceRefs[ga.id] ?? const [],
       );
     }).toList();
 
@@ -174,14 +254,15 @@ class KnxProject {
               ))
           .toList();
 
-      final deviceToolKeys = allDevices
-          .where((d) =>
-              d.securityToolKey != null && d.securityToolKey!.isNotEmpty)
-          .map((d) => KnxDeviceToolKey(
-                deviceId: d.id,
-                address: d.address,
-                name: d.name,
-                toolKey: d.securityToolKey,
+      final deviceToolKeys = deviceEntries
+          .where((e) =>
+              e.device.securityToolKey != null &&
+              e.device.securityToolKey!.isNotEmpty)
+          .map((e) => KnxDeviceToolKey(
+                deviceId: e.device.id,
+                address: e.device.address,
+                name: e.device.name,
+                toolKey: e.device.securityToolKey,
               ))
           .toList();
 
@@ -202,8 +283,11 @@ class KnxProject {
       etsVersion: projectInfo.etsVersion,
       schemaVersion: projectInfo.schemaVersion,
       hasSecure: hasSecure,
+      buildings: buildings,
       floors: floors,
       rooms: rooms,
+      areas: flatAreas,
+      lines: flatLines,
       devices: devices,
       groupAddresses: groupAddresses,
       groupRanges: groupRanges,
@@ -230,4 +314,23 @@ class KnxProject {
 
   @override
   String toString() => 'KnxProject(${projectInfo.name})';
+}
+
+/// Internal helper for collecting device info during toFlat()
+class _DeviceEntry {
+  final DeviceInstance device;
+  final String formattedAddress;
+  final String areaId;
+  final String? areaName;
+  final String lineId;
+  final String? lineName;
+
+  const _DeviceEntry({
+    required this.device,
+    required this.formattedAddress,
+    required this.areaId,
+    this.areaName,
+    required this.lineId,
+    this.lineName,
+  });
 }

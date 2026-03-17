@@ -40,6 +40,21 @@ class DatapointType {
     );
   }
 
+  factory DatapointType.fromJson(Map<String, dynamic> json) {
+    return DatapointType(
+      id: json['id'] as String,
+      number: json['number'] as int,
+      name: json['name'] as String,
+      text: json['text'] as String,
+      sizeInBit: json['sizeInBit'] as int,
+      pdt: json['pdt'] as String?,
+      subtypes: (json['subtypes'] as List<dynamic>?)
+              ?.map((e) => DatapointSubtype.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+
   /// Convert to JSON map
   Map<String, dynamic> toJson() {
     return {
@@ -84,6 +99,17 @@ class DatapointSubtype {
       text: element.getAttribute('Text') ?? '',
       isDefault: element.getAttribute('Default') == 'true',
       pdt: element.getAttribute('PDT'),
+    );
+  }
+
+  factory DatapointSubtype.fromJson(Map<String, dynamic> json) {
+    return DatapointSubtype(
+      id: json['id'] as String,
+      number: json['number'] as int,
+      name: json['name'] as String,
+      text: json['text'] as String,
+      isDefault: json['isDefault'] as bool? ?? false,
+      pdt: json['pdt'] as String?,
     );
   }
 
