@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 import 'package:pointycastle/export.dart';
 import '../models/knx_project.dart';
+import '../models/knx_flat_project.dart';
 import '../models/project_info.dart';
 import '../models/installation.dart';
 import '../models/datapoint_type.dart';
@@ -437,6 +438,17 @@ class KnxProjectParser {
     return outputFile;
   }
 
+  /// Parse and return flat model (organized sections)
+  Future<KnxFlatProject> parseToFlat(
+    String filePath, {
+    String? password,
+    KnxKeys? knxKeys,
+  }) async {
+    final project =
+        await parse(filePath, password: password, knxKeys: knxKeys);
+    return project.toFlat();
+  }
+
   /// Parse and export to flat JSON string (organized sections)
   Future<String> parseToFlatJson(
     String filePath, {
@@ -444,11 +456,10 @@ class KnxProjectParser {
     String? password,
     KnxKeys? knxKeys,
   }) async {
-    final project =
-        await parse(filePath, password: password, knxKeys: knxKeys);
+    final flat = await parseToFlat(filePath, password: password, knxKeys: knxKeys);
     final encoder =
         pretty ? const JsonEncoder.withIndent('  ') : const JsonEncoder();
-    return encoder.convert(project.toFlatJson());
+    return encoder.convert(flat.toJson());
   }
 
   /// Parse and save to flat JSON file (organized sections)

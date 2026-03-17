@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.9.0] - 2026-03-17
+
+### Added
+- **Typed flat model**: New `KnxFlatProject` with typed classes (`KnxFloor`, `KnxRoom`, `KnxDevice`, `KnxGroupAddress`, `KnxGroupRange`, `KnxSecureKeys`, `KnxGaSecureKey`, `KnxDeviceToolKey`).
+- `toFlat()` method on `KnxProject` returns typed `KnxFlatProject` instead of raw `Map`.
+- `parseToFlat()` convenience method on `KnxProjectParser`.
+- **GA-device mapping**: `KnxGroupAddress.deviceIds` shows which devices reference each group address via comObject links.
+- **DPT format conversion**: `datapointType` in flat output now uses `x.yyy` format (e.g., `9.001`) instead of raw `DPST-x-y`.
+- Exported `DeviceInstance` and `KnxFlatProject` models from library.
+
+### Changed
+- `toFlatJson()` now delegates to `toFlat().toJson()`.
+
 ## [1.8.0] - 2026-03-16
 
 ### Added
