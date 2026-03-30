@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.1] - 2026-03-30
+
+### Fixed
+- **ComObject app program matching**: Use HP suffix from `Hardware2ProgramRefId` to match the exact application program for each device. Prevents cross-matching when multiple devices share the same manufacturer prefix (e.g. `O-1_R-1` matching wrong program).
+
 ## [1.11.0] - 2026-03-30
 
 ### Added
