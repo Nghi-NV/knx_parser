@@ -8,6 +8,8 @@ import '../models/knx_project.dart';
 import '../models/knx_flat_project.dart';
 import '../models/project_info.dart';
 import '../models/installation.dart';
+import '../models/device_instance.dart';
+import '../models/topology.dart';
 import '../models/datapoint_type.dart';
 import '../models/knx_keys.dart';
 
@@ -107,6 +109,10 @@ class KnxProjectParser {
     String? projectId;
     // Product catalog: productRefId -> product name (Text attribute)
     final Map<String, String> productCatalog = {};
+    // ComObject definitions: suffixId -> ComObject attributes
+    final Map<String, Map<String, String>> comObjectDefs = {};
+    // ComObjectRef mapping: comObjectRefSuffix -> comObjectSuffix
+    final Map<String, Map<String, String>> comObjectRefMap = {};
 
     // Detect schema version for ETS6 password derivation
     final schemaVersion = _getSchemaVersion(archive);
@@ -205,14 +211,24 @@ class KnxProjectParser {
         }
       }
 
-      // Parse M-*/Hardware.xml from outer archive for product catalog
+      // Parse M-*/Hardware.xml and M-*/M-*_A-*.xml from outer archive
       for (final f in archive) {
-        if (f.isFile && f.name.contains('/Hardware.xml')) {
+        if (!f.isFile) continue;
+        if (f.name.contains('/Hardware.xml')) {
           try {
             final raw = f.content as List<int>;
             final hwContent = _decodeUtf8WithBom(raw);
             final products = _parseProductCatalog(hwContent);
             productCatalog.addAll(products);
+          } catch (_) {}
+        } else if (f.name.contains('/M-') && f.name.endsWith('.xml') &&
+                   !f.name.contains('Hardware') && !f.name.contains('Catalog') &&
+                   !f.name.contains('Baggages')) {
+          // Application program XML (M-*/M-*_A-*.xml)
+          try {
+            final raw = f.content as List<int>;
+            final appContent = _decodeUtf8WithBom(raw);
+            _parseComObjectDefinitions(appContent, comObjectDefs, comObjectRefMap);
           } catch (_) {}
         }
       }
@@ -222,6 +238,15 @@ class KnxProjectParser {
         installations = _mergeProductNamesIntoInstallations(
           installations,
           productCatalog,
+        );
+      }
+
+      // Enrich ComObjectInstanceRefs with definitions and resolve GA links
+      if (comObjectDefs.isNotEmpty || comObjectRefMap.isNotEmpty) {
+        installations = _enrichComObjectsInInstallations(
+          installations,
+          comObjectDefs,
+          comObjectRefMap,
         );
       }
 
@@ -507,5 +532,265 @@ class KnxProjectParser {
     return installations.map((installation) {
       return installation.copyWithProductCatalog(productCatalog);
     }).toList();
+  }
+
+  /// Parse ComObject definitions and ComObjectRef mappings from application program XML.
+  /// Populates [comObjectDefs] with suffix -> attributes map.
+  /// Populates [comObjectRefMap] with refSuffix -> attributes map (including overrides).
+  void _parseComObjectDefinitions(
+    String xmlContent,
+    Map<String, Map<String, String>> comObjectDefs,
+    Map<String, Map<String, String>> comObjectRefMap,
+  ) {
+    try {
+      final document = XmlDocument.parse(xmlContent);
+
+      // Parse ComObject elements (definitions)
+      for (final co in document.findAllElements('ComObject')) {
+        final id = co.getAttribute('Id');
+        if (id == null) continue;
+        final attrs = <String, String>{};
+        for (final attr in co.attributes) {
+          attrs[attr.name.local] = attr.value;
+        }
+        comObjectDefs[id] = attrs;
+      }
+
+      // Parse ComObjectRef elements (may override some attributes)
+      for (final coRef in document.findAllElements('ComObjectRef')) {
+        final id = coRef.getAttribute('Id');
+        final refId = coRef.getAttribute('RefId');
+        if (id == null) continue;
+        final attrs = <String, String>{};
+        for (final attr in coRef.attributes) {
+          attrs[attr.name.local] = attr.value;
+        }
+        // Store the ComObject RefId for lookup
+        if (refId != null) attrs['_comObjectId'] = refId;
+        comObjectRefMap[id] = attrs;
+      }
+    } catch (_) {}
+  }
+
+  /// Look up ComObject definition for a given ComObjectInstanceRef.RefId
+  /// Uses suffix matching: project XML uses short IDs, app program uses full prefixed IDs.
+  Map<String, String>? _lookupComObjectDef(
+    String instanceRefId,
+    String appProgramPrefix,
+    Map<String, Map<String, String>> comObjectDefs,
+    Map<String, Map<String, String>> comObjectRefMap,
+  ) {
+    // Try direct match with full prefix: prefix + '_' + instanceRefId
+    final fullRefId = '${appProgramPrefix}_$instanceRefId';
+
+    // First try ComObjectRef (may have overridden attributes)
+    final refAttrs = comObjectRefMap[fullRefId];
+    if (refAttrs != null) {
+      // Get base ComObject definition and merge
+      final comObjectId = refAttrs['_comObjectId'];
+      final baseAttrs = comObjectId != null ? comObjectDefs[comObjectId] : null;
+      if (baseAttrs != null) {
+        // Merge: base attrs + ref overrides
+        return {...baseAttrs, ...refAttrs};
+      }
+      return refAttrs;
+    }
+
+    // Try suffix match in comObjectRefMap
+    for (final entry in comObjectRefMap.entries) {
+      if (entry.key.endsWith('_$instanceRefId')) {
+        final comObjectId = entry.value['_comObjectId'];
+        final baseAttrs =
+            comObjectId != null ? comObjectDefs[comObjectId] : null;
+        if (baseAttrs != null) {
+          return {...baseAttrs, ...entry.value};
+        }
+        return entry.value;
+      }
+    }
+
+    // Try suffix match directly in comObjectDefs
+    for (final entry in comObjectDefs.entries) {
+      if (entry.key.endsWith('_$instanceRefId')) {
+        return entry.value;
+      }
+    }
+
+    return null;
+  }
+
+  bool _flagValue(String? value) {
+    if (value == null) return false;
+    return value == 'Enabled' || value == '1' || value == 'true';
+  }
+
+  /// Resolve GA links ("GA-1 GA-2") to formatted addresses using installation's GA list.
+  List<String> _resolveGaLinks(
+    String? links,
+    List<Installation> installations,
+  ) {
+    if (links == null || links.isEmpty) return [];
+    final gaIds = links.split(' ').where((s) => s.isNotEmpty).toList();
+    final resolved = <String>[];
+    for (final gaId in gaIds) {
+      for (final inst in installations) {
+        for (final ga in inst.groupAddresses) {
+          if (ga.id.endsWith(gaId) || ga.id.endsWith('_$gaId')) {
+            resolved.add(ga.formattedAddress);
+            break;
+          }
+        }
+      }
+    }
+    return resolved;
+  }
+
+  /// Enrich all ComObjectInstanceRefs in installations with definition data.
+  List<Installation> _enrichComObjectsInInstallations(
+    List<Installation> installations,
+    Map<String, Map<String, String>> comObjectDefs,
+    Map<String, Map<String, String>> comObjectRefMap,
+  ) {
+    return installations.map((inst) {
+      final updatedTopology = Topology(
+        areas: inst.topology.areas.map((area) {
+          return Area(
+            id: area.id,
+            address: area.address,
+            puid: area.puid,
+            name: area.name,
+            lines: area.lines.map((line) {
+              return Line(
+                id: line.id,
+                address: line.address,
+                puid: line.puid,
+                name: line.name,
+                segments: line.segments.map((seg) {
+                  return Segment(
+                    id: seg.id,
+                    number: seg.number,
+                    mediumTypeRefId: seg.mediumTypeRefId,
+                    puid: seg.puid,
+                    devices: seg.devices.map((d) {
+                      return _enrichDeviceComObjects(
+                          d, comObjectDefs, comObjectRefMap, installations);
+                    }).toList(),
+                  );
+                }).toList(),
+                devices: line.devices.map((d) {
+                  return _enrichDeviceComObjects(
+                      d, comObjectDefs, comObjectRefMap, installations);
+                }).toList(),
+              );
+            }).toList(),
+          );
+        }).toList(),
+      );
+      return Installation(
+        name: inst.name,
+        bcuKey: inst.bcuKey,
+        defaultLine: inst.defaultLine,
+        topology: updatedTopology,
+        groupAddresses: inst.groupAddresses,
+        groupRanges: inst.groupRanges,
+        locations: inst.locations,
+      );
+    }).toList();
+  }
+
+  /// Enrich a single DeviceInstance's ComObjects
+  DeviceInstance _enrichDeviceComObjects(
+    DeviceInstance device,
+    Map<String, Map<String, String>> comObjectDefs,
+    Map<String, Map<String, String>> comObjectRefMap,
+    List<Installation> installations,
+  ) {
+    // Determine app program prefix from hardware2ProgramRefId
+    // e.g. "M-0085_H-RL.2D4CH.2D2025-1_HP-07E9-01-1D78" -> look for "M-0085_A-07E9-01-1D78"
+    final h2pRefId = device.hardware2ProgramRefId ?? '';
+    // Extract manufacturer prefix (e.g. "M-0085")
+    final mfgMatch = RegExp(r'^(M-[^_]+)').firstMatch(h2pRefId);
+    final mfgPrefix = mfgMatch?.group(1) ?? '';
+
+    final enrichedComObjects = device.comObjectInstanceRefs.map((co) {
+      if (co.refId == null) return co;
+
+      // Try to find definition
+      Map<String, String>? def;
+
+      // For module ComObjects, strip module instance part:
+      // e.g. "MD-1_M-1_MI-1_O-2-1_R-1" -> "MD-1_O-2-1_R-1"
+      final refId = co.refId!;
+      final strippedRefId =
+          refId.replaceAll(RegExp(r'_M-\d+_MI-\d+'), '');
+
+      // Try all known app program prefixes
+      for (final key in comObjectDefs.keys) {
+        if (key.startsWith(mfgPrefix)) {
+          final appMatch = RegExp(r'^(M-[^_]+_A-[^_]+)').firstMatch(key);
+          if (appMatch != null) {
+            final prefix = appMatch.group(1)!;
+            // Try original refId first, then stripped
+            def = _lookupComObjectDef(
+                refId, prefix, comObjectDefs, comObjectRefMap);
+            if (def == null && strippedRefId != refId) {
+              def = _lookupComObjectDef(
+                  strippedRefId, prefix, comObjectDefs, comObjectRefMap);
+            }
+            if (def != null) break;
+          }
+        }
+      }
+
+      // Fallback: try suffix match across all defs (original + stripped)
+      if (def == null) {
+        for (final suffix in [refId, if (strippedRefId != refId) strippedRefId]) {
+          for (final entry in comObjectRefMap.entries) {
+            if (entry.key.endsWith('_$suffix')) {
+              final comObjId = entry.value['_comObjectId'];
+              final baseDef =
+                  comObjId != null ? comObjectDefs[comObjId] : null;
+              def = baseDef != null
+                  ? {...baseDef, ...entry.value}
+                  : entry.value;
+              break;
+            }
+          }
+          if (def != null) break;
+        }
+      }
+
+      final resolvedGAs = _resolveGaLinks(co.links, installations);
+
+      if (def == null && resolvedGAs.isEmpty) return co;
+
+      return co.copyWithDefinition(
+        name: def?['Name'],
+        description: def?['Text'],
+        number: int.tryParse(def?['Number'] ?? ''),
+        functionText: def?['FunctionText'],
+        objectSize: def?['ObjectSize'],
+        datapointType: def?['DatapointType'],
+        readFlag: def != null ? _flagValue(def['ReadFlag']) : null,
+        writeFlag: def != null ? _flagValue(def['WriteFlag']) : null,
+        transmitFlag: def != null ? _flagValue(def['TransmitFlag']) : null,
+        updateFlag: def != null ? _flagValue(def['UpdateFlag']) : null,
+        groupAddresses: resolvedGAs.isNotEmpty ? resolvedGAs : null,
+      );
+    }).toList();
+
+    return DeviceInstance(
+      id: device.id,
+      address: device.address,
+      name: device.name,
+      description: device.description,
+      comment: device.comment,
+      productName: device.productName,
+      productRefId: device.productRefId,
+      hardware2ProgramRefId: device.hardware2ProgramRefId,
+      puid: device.puid,
+      comObjectInstanceRefs: enrichedComObjects,
+      securityToolKey: device.securityToolKey,
+    );
   }
 }

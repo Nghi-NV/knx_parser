@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.11.0] - 2026-03-30
+
+### Added
+- **ComObject enrichment**: `ComObjectInstanceRef` is now enriched with data from application program XML (`M-*/M-*_A-*.xml`):
+  - `name`, `description`, `number`, `functionText`, `objectSize`, `datapointType`
+  - `readFlag`, `writeFlag`, `transmitFlag`, `updateFlag` (boolean flags)
+  - `channelId` from project XML
+  - `groupAddresses` — resolved GA links from raw IDs (e.g. `GA-1`) to formatted addresses (e.g. `0/0/1`)
+- Support for module ComObjects (e.g. `MD-1_M-1_MI-1_O-2-1_R-1`) via automatic stripping of module instance prefix.
+- `copyWithDefinition()` method on `ComObjectInstanceRef` for immutable enrichment.
+
 ## [1.10.2] - 2026-03-30
 
 ### Fixed
