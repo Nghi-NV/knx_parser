@@ -75,12 +75,13 @@ class DeviceInstance {
   }
 
   /// Create a copy with product name from product catalog.
-  /// Keeps original [name] (user-defined in ETS) intact.
+  /// If [name] is null/empty, uses [productCatalogName] as fallback.
   DeviceInstance copyWithProductName(String productCatalogName) {
+    final hasName = name != null && name!.isNotEmpty;
     return DeviceInstance(
       id: id,
       address: address,
-      name: name,
+      name: hasName ? name : productCatalogName,
       description: description,
       comment: comment,
       productName: productCatalogName,

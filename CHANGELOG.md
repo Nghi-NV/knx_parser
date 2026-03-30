@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.10.2] - 2026-03-30
+
+### Fixed
+- Device name fallback: if user didn't set a name in ETS (`Name` attribute is null/empty), `productName` from catalog is used as fallback for `name` field.
+
+## [1.10.1] - 2026-03-30
+
+### Fixed
+- **Device name preservation**: Product catalog merge (`copyWithProductCatalog`) no longer overwrites user-defined device names from ETS. Added separate `productName` field.
+- Added `description` and `comment` fields to `DeviceInstance` and `KnxDevice`, parsed from XML attributes.
+- Renamed `copyWithName()` to `copyWithProductName()` to clarify intent.
+
 ## [1.10.0] - 2026-03-17
 
 ### Added
