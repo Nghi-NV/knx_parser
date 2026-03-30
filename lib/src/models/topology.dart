@@ -140,7 +140,7 @@ class Line {
   Line copyWithProductCatalog(Map<String, String> productCatalog) {
     final updatedDevices = devices.map((device) {
       final productName = productCatalog[device.productRefId];
-      return productName != null ? device.copyWithName(productName) : device;
+      return productName != null ? device.copyWithProductName(productName) : device;
     }).toList();
     final updatedSegments =
         segments.map((s) => s.copyWithProductCatalog(productCatalog)).toList();
@@ -207,7 +207,7 @@ class Segment {
   Segment copyWithProductCatalog(Map<String, String> productCatalog) {
     final updatedDevices = devices.map((device) {
       final productName = productCatalog[device.productRefId];
-      return productName != null ? device.copyWithName(productName) : device;
+      return productName != null ? device.copyWithProductName(productName) : device;
     }).toList();
     return Segment(
       id: id,

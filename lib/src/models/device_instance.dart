@@ -5,6 +5,9 @@ class DeviceInstance {
   final String id;
   final int address;
   final String? name;
+  final String? description;
+  final String? comment;
+  final String? productName;
   final String? productRefId;
   final String? hardware2ProgramRefId;
   final int? puid;
@@ -15,6 +18,9 @@ class DeviceInstance {
     required this.id,
     required this.address,
     this.name,
+    this.description,
+    this.comment,
+    this.productName,
     this.productRefId,
     this.hardware2ProgramRefId,
     this.puid,
@@ -38,6 +44,8 @@ class DeviceInstance {
       id: element.getAttribute('Id') ?? '',
       address: int.tryParse(element.getAttribute('Address') ?? '') ?? 0,
       name: element.getAttribute('Name'),
+      description: element.getAttribute('Description'),
+      comment: element.getAttribute('Comment'),
       productRefId: element.getAttribute('ProductRefId'),
       hardware2ProgramRefId: element.getAttribute('Hardware2ProgramRefId'),
       puid: int.tryParse(element.getAttribute('Puid') ?? ''),
@@ -51,6 +59,11 @@ class DeviceInstance {
       'id': id,
       'address': address,
       if (name != null && name!.isNotEmpty) 'name': name,
+      if (description != null && description!.isNotEmpty)
+        'description': description,
+      if (comment != null && comment!.isNotEmpty) 'comment': comment,
+      if (productName != null && productName!.isNotEmpty)
+        'productName': productName,
       if (productRefId != null) 'productRefId': productRefId,
       if (hardware2ProgramRefId != null)
         'hardware2ProgramRefId': hardware2ProgramRefId,
@@ -61,12 +74,16 @@ class DeviceInstance {
     };
   }
 
-  /// Create a copy with updated name from product catalog
-  DeviceInstance copyWithName(String? newName) {
+  /// Create a copy with product name from product catalog.
+  /// Keeps original [name] (user-defined in ETS) intact.
+  DeviceInstance copyWithProductName(String productCatalogName) {
     return DeviceInstance(
       id: id,
       address: address,
-      name: newName ?? name,
+      name: name,
+      description: description,
+      comment: comment,
+      productName: productCatalogName,
       productRefId: productRefId,
       hardware2ProgramRefId: hardware2ProgramRefId,
       puid: puid,

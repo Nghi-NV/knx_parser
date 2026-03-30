@@ -403,6 +403,9 @@ class KnxDevice {
   final int address;
   final String formattedAddress;
   final String? name;
+  final String? description;
+  final String? comment;
+  final String? productName;
   final String? roomId;
   final String? roomName;
   final String? areaId;
@@ -420,6 +423,9 @@ class KnxDevice {
     required this.address,
     required this.formattedAddress,
     this.name,
+    this.description,
+    this.comment,
+    this.productName,
     this.roomId,
     this.roomName,
     this.areaId,
@@ -439,6 +445,9 @@ class KnxDevice {
       address: json['address'] as int,
       formattedAddress: json['formattedAddress'] as String,
       name: json['name'] as String?,
+      description: json['description'] as String?,
+      comment: json['comment'] as String?,
+      productName: json['productName'] as String?,
       roomId: json['roomId'] as String?,
       roomName: json['roomName'] as String?,
       areaId: json['areaId'] as String?,
@@ -463,6 +472,11 @@ class KnxDevice {
       'address': address,
       'formattedAddress': formattedAddress,
       if (name != null && name!.isNotEmpty) 'name': name,
+      if (description != null && description!.isNotEmpty)
+        'description': description,
+      if (comment != null && comment!.isNotEmpty) 'comment': comment,
+      if (productName != null && productName!.isNotEmpty)
+        'productName': productName,
       if (roomId != null) 'roomId': roomId,
       if (roomName != null) 'roomName': roomName,
       if (areaId != null) 'areaId': areaId,
