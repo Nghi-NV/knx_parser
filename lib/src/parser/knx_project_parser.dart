@@ -706,11 +706,17 @@ class KnxProjectParser {
     List<Installation> installations,
   ) {
     // Determine app program prefix from hardware2ProgramRefId
-    // e.g. "M-0085_H-RL.2D4CH.2D2025-1_HP-07E9-01-1D78" -> look for "M-0085_A-07E9-01-1D78"
+    // e.g. "M-0085_H-RL.2D4CH.2D2025-1_HP-07E9-01-1D78" -> "M-0085_A-07E9-01-1D78"
     final h2pRefId = device.hardware2ProgramRefId ?? '';
     // Extract manufacturer prefix (e.g. "M-0085")
     final mfgMatch = RegExp(r'^(M-[^_]+)').firstMatch(h2pRefId);
     final mfgPrefix = mfgMatch?.group(1) ?? '';
+    // Extract HP suffix and build exact app program prefix
+    // HP-07E9-01-1D78 -> A-07E9-01-1D78
+    final hpMatch = RegExp(r'HP-(.+)$').firstMatch(h2pRefId);
+    final appProgramPrefix = hpMatch != null
+        ? '${mfgPrefix}_A-${hpMatch.group(1)}'
+        : null;
 
     final enrichedComObjects = device.comObjectInstanceRefs.map((co) {
       if (co.refId == null) return co;
@@ -724,20 +730,31 @@ class KnxProjectParser {
       final strippedRefId =
           refId.replaceAll(RegExp(r'_M-\d+_MI-\d+'), '');
 
-      // Try all known app program prefixes
-      for (final key in comObjectDefs.keys) {
-        if (key.startsWith(mfgPrefix)) {
-          final appMatch = RegExp(r'^(M-[^_]+_A-[^_]+)').firstMatch(key);
-          if (appMatch != null) {
-            final prefix = appMatch.group(1)!;
-            // Try original refId first, then stripped
-            def = _lookupComObjectDef(
-                refId, prefix, comObjectDefs, comObjectRefMap);
-            if (def == null && strippedRefId != refId) {
+      // Try exact app program prefix first (derived from HP suffix)
+      if (appProgramPrefix != null) {
+        def = _lookupComObjectDef(
+            refId, appProgramPrefix, comObjectDefs, comObjectRefMap);
+        if (def == null && strippedRefId != refId) {
+          def = _lookupComObjectDef(
+              strippedRefId, appProgramPrefix, comObjectDefs, comObjectRefMap);
+        }
+      }
+
+      // Fallback: try all app programs with same manufacturer prefix
+      if (def == null) {
+        for (final key in comObjectDefs.keys) {
+          if (key.startsWith(mfgPrefix)) {
+            final appMatch = RegExp(r'^(M-[^_]+_A-[^_]+)').firstMatch(key);
+            if (appMatch != null) {
+              final prefix = appMatch.group(1)!;
               def = _lookupComObjectDef(
-                  strippedRefId, prefix, comObjectDefs, comObjectRefMap);
+                  refId, prefix, comObjectDefs, comObjectRefMap);
+              if (def == null && strippedRefId != refId) {
+                def = _lookupComObjectDef(
+                    strippedRefId, prefix, comObjectDefs, comObjectRefMap);
+              }
+              if (def != null) break;
             }
-            if (def != null) break;
           }
         }
       }
