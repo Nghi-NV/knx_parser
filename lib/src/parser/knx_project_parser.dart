@@ -572,6 +572,23 @@ class KnxProjectParser {
     } catch (_) {}
   }
 
+  /// Merge ComObjectRef overrides into base ComObject attrs.
+  /// If a ref value contains ETS template placeholders ({{...}}),
+  /// keep the base value instead (which is typically cleaner).
+  Map<String, String> _mergeComObjectAttrs(
+    Map<String, String> baseAttrs,
+    Map<String, String> refAttrs,
+  ) {
+    final merged = {...baseAttrs};
+    for (final entry in refAttrs.entries) {
+      final value = entry.value;
+      // Skip template placeholders — base value is cleaner
+      if (value.contains('{{')) continue;
+      merged[entry.key] = value;
+    }
+    return merged;
+  }
+
   /// Look up ComObject definition for a given ComObjectInstanceRef.RefId
   /// Uses suffix matching: project XML uses short IDs, app program uses full prefixed IDs.
   Map<String, String>? _lookupComObjectDef(
@@ -590,8 +607,7 @@ class KnxProjectParser {
       final comObjectId = refAttrs['_comObjectId'];
       final baseAttrs = comObjectId != null ? comObjectDefs[comObjectId] : null;
       if (baseAttrs != null) {
-        // Merge: base attrs + ref overrides
-        return {...baseAttrs, ...refAttrs};
+        return _mergeComObjectAttrs(baseAttrs, refAttrs);
       }
       return refAttrs;
     }
@@ -603,7 +619,7 @@ class KnxProjectParser {
         final baseAttrs =
             comObjectId != null ? comObjectDefs[comObjectId] : null;
         if (baseAttrs != null) {
-          return {...baseAttrs, ...entry.value};
+          return _mergeComObjectAttrs(baseAttrs, entry.value);
         }
         return entry.value;
       }
@@ -768,7 +784,7 @@ class KnxProjectParser {
               final baseDef =
                   comObjId != null ? comObjectDefs[comObjId] : null;
               def = baseDef != null
-                  ? {...baseDef, ...entry.value}
+                  ? _mergeComObjectAttrs(baseDef, entry.value)
                   : entry.value;
               break;
             }
