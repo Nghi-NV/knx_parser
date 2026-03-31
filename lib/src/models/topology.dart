@@ -13,9 +13,15 @@ class Topology {
   }
 
   /// Create a copy with device names updated from product catalog
-  Topology copyWithProductCatalog(Map<String, String> productCatalog) {
-    final updatedAreas =
-        areas.map((a) => a.copyWithProductCatalog(productCatalog)).toList();
+  Topology copyWithEnrichmentCatalogs(
+      Map<String, Map<String, String>> productCatalog,
+      Map<String, Map<String, String>> hw2ProgCatalog,
+      Map<String, Map<String, String>> appCatalog,
+      Map<String, String> mfgCatalog) {
+    final updatedAreas = areas
+        .map((a) => a.copyWithEnrichmentCatalogs(
+            productCatalog, hw2ProgCatalog, appCatalog, mfgCatalog))
+        .toList();
     return Topology(areas: updatedAreas);
   }
 }
@@ -62,9 +68,15 @@ class Area {
   }
 
   /// Create a copy with device names updated from product catalog
-  Area copyWithProductCatalog(Map<String, String> productCatalog) {
-    final updatedLines =
-        lines.map((l) => l.copyWithProductCatalog(productCatalog)).toList();
+  Area copyWithEnrichmentCatalogs(
+      Map<String, Map<String, String>> productCatalog,
+      Map<String, Map<String, String>> hw2ProgCatalog,
+      Map<String, Map<String, String>> appCatalog,
+      Map<String, String> mfgCatalog) {
+    final updatedLines = lines
+        .map((l) => l.copyWithEnrichmentCatalogs(
+            productCatalog, hw2ProgCatalog, appCatalog, mfgCatalog))
+        .toList();
     return Area(
       id: id,
       address: address,
@@ -137,13 +149,56 @@ class Line {
   }
 
   /// Create a copy with device names updated from product catalog
-  Line copyWithProductCatalog(Map<String, String> productCatalog) {
+  Line copyWithEnrichmentCatalogs(
+      Map<String, Map<String, String>> productCatalog,
+      Map<String, Map<String, String>> hw2ProgCatalog,
+      Map<String, Map<String, String>> appCatalog,
+      Map<String, String> mfgCatalog) {
     final updatedDevices = devices.map((device) {
-      final productName = productCatalog[device.productRefId];
-      return productName != null ? device.copyWithProductName(productName) : device;
+      String? productName;
+      String? orderNumber;
+      if (device.productRefId != null) {
+        final pInfo = productCatalog[device.productRefId];
+        productName = pInfo?['name'];
+        orderNumber = pInfo?['orderNumber'];
+      }
+
+      String? mediumType;
+      String? appName;
+      String? appVersion;
+      if (device.hardware2ProgramRefId != null) {
+        final hpInfo = hw2ProgCatalog[device.hardware2ProgramRefId];
+        mediumType = hpInfo?['mediumType'];
+
+        final parts = device.hardware2ProgramRefId!.split('_HP-');
+        if (parts.length == 2) {
+          final prefix = parts[0].split('_').first;
+          final appId = '${prefix}_A-${parts[1]}';
+          final appInfo = appCatalog[appId];
+          appName = appInfo?['name'];
+          appVersion = appInfo?['version'];
+        }
+      }
+
+      String? mfgName;
+      if (device.productRefId != null) {
+        final prefix = device.productRefId!.split('_').first;
+        mfgName = mfgCatalog[prefix];
+      }
+
+      return device.copyWithEnrichment(
+        productName: productName,
+        orderNumber: orderNumber,
+        mediumType: mediumType,
+        applicationName: appName,
+        applicationVersion: appVersion,
+        manufacturerName: mfgName,
+      );
     }).toList();
-    final updatedSegments =
-        segments.map((s) => s.copyWithProductCatalog(productCatalog)).toList();
+    final updatedSegments = segments
+        .map((s) => s.copyWithEnrichmentCatalogs(
+            productCatalog, hw2ProgCatalog, appCatalog, mfgCatalog))
+        .toList();
     return Line(
       id: id,
       address: address,
@@ -204,10 +259,51 @@ class Segment {
   }
 
   /// Create a copy with device names updated from product catalog
-  Segment copyWithProductCatalog(Map<String, String> productCatalog) {
+  Segment copyWithEnrichmentCatalogs(
+      Map<String, Map<String, String>> productCatalog,
+      Map<String, Map<String, String>> hw2ProgCatalog,
+      Map<String, Map<String, String>> appCatalog,
+      Map<String, String> mfgCatalog) {
     final updatedDevices = devices.map((device) {
-      final productName = productCatalog[device.productRefId];
-      return productName != null ? device.copyWithProductName(productName) : device;
+      String? productName;
+      String? orderNumber;
+      if (device.productRefId != null) {
+        final pInfo = productCatalog[device.productRefId];
+        productName = pInfo?['name'];
+        orderNumber = pInfo?['orderNumber'];
+      }
+
+      String? mediumType;
+      String? appName;
+      String? appVersion;
+      if (device.hardware2ProgramRefId != null) {
+        final hpInfo = hw2ProgCatalog[device.hardware2ProgramRefId];
+        mediumType = hpInfo?['mediumType'];
+
+        final parts = device.hardware2ProgramRefId!.split('_HP-');
+        if (parts.length == 2) {
+          final prefix = parts[0].split('_').first;
+          final appId = '${prefix}_A-${parts[1]}';
+          final appInfo = appCatalog[appId];
+          appName = appInfo?['name'];
+          appVersion = appInfo?['version'];
+        }
+      }
+
+      String? mfgName;
+      if (device.productRefId != null) {
+        final prefix = device.productRefId!.split('_').first;
+        mfgName = mfgCatalog[prefix];
+      }
+
+      return device.copyWithEnrichment(
+        productName: productName,
+        orderNumber: orderNumber,
+        mediumType: mediumType,
+        applicationName: appName,
+        applicationVersion: appVersion,
+        manufacturerName: mfgName,
+      );
     }).toList();
     return Segment(
       id: id,

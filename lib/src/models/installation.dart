@@ -122,12 +122,18 @@ class Installation {
   }
 
   /// Create a copy with device names updated from product catalog
-  Installation copyWithProductCatalog(Map<String, String> productCatalog) {
+  Installation copyWithEnrichmentCatalogs(
+    Map<String, Map<String, String>> productCatalog,
+    Map<String, Map<String, String>> hw2ProgCatalog,
+    Map<String, Map<String, String>> appCatalog,
+    Map<String, String> mfgCatalog,
+  ) {
     return Installation(
       name: name,
       bcuKey: bcuKey,
       defaultLine: defaultLine,
-      topology: topology.copyWithProductCatalog(productCatalog),
+      topology: topology.copyWithEnrichmentCatalogs(
+          productCatalog, hw2ProgCatalog, appCatalog, mfgCatalog),
       groupAddresses: groupAddresses,
       groupRanges: groupRanges,
       locations: locations,

@@ -14,6 +14,14 @@ class DeviceInstance {
   final List<ComObjectInstanceRef> comObjectInstanceRefs;
   final String? securityToolKey;
 
+  // ── Enriched data ──
+  final String? manufacturerName;
+  final String? orderNumber;
+  final String? applicationName;
+  final String? applicationVersion;
+  final String? mediumType;
+  final String? locationPath;
+
   const DeviceInstance({
     required this.id,
     required this.address,
@@ -26,6 +34,12 @@ class DeviceInstance {
     this.puid,
     this.comObjectInstanceRefs = const [],
     this.securityToolKey,
+    this.manufacturerName,
+    this.orderNumber,
+    this.applicationName,
+    this.applicationVersion,
+    this.mediumType,
+    this.locationPath,
   });
 
   factory DeviceInstance.fromXml(XmlElement element) {
@@ -71,30 +85,78 @@ class DeviceInstance {
       'comObjectInstanceRefs':
           comObjectInstanceRefs.map((e) => e.toJson()).toList(),
       if (securityToolKey != null) 'securityToolKey': securityToolKey,
+      if (manufacturerName != null) 'manufacturerName': manufacturerName,
+      if (orderNumber != null) 'orderNumber': orderNumber,
+      if (applicationName != null) 'applicationName': applicationName,
+      if (applicationVersion != null) 'applicationVersion': applicationVersion,
+      if (mediumType != null) 'mediumType': mediumType,
+      if (locationPath != null) 'locationPath': locationPath,
     };
   }
 
-  /// Create a copy with product name from product catalog.
-  /// If [name] is null/empty, uses [productCatalogName] as fallback.
-  DeviceInstance copyWithProductName(String productCatalogName) {
+  /// Create an enriched copy of DeviceInstance
+  DeviceInstance copyWithEnrichment({
+    String? productName,
+    String? manufacturerName,
+    String? orderNumber,
+    String? applicationName,
+    String? applicationVersion,
+    String? mediumType,
+    String? locationPath,
+    List<ComObjectInstanceRef>? comObjectInstanceRefs,
+  }) {
     final hasName = name != null && name!.isNotEmpty;
     return DeviceInstance(
       id: id,
       address: address,
-      name: hasName ? name : productCatalogName,
+      name: hasName ? name : (productName ?? this.productName),
       description: description,
       comment: comment,
-      productName: productCatalogName,
+      productName: productName ?? this.productName,
       productRefId: productRefId,
       hardware2ProgramRefId: hardware2ProgramRefId,
       puid: puid,
-      comObjectInstanceRefs: comObjectInstanceRefs,
       securityToolKey: securityToolKey,
+      manufacturerName: manufacturerName ?? this.manufacturerName,
+      orderNumber: orderNumber ?? this.orderNumber,
+      applicationName: applicationName ?? this.applicationName,
+      applicationVersion: applicationVersion ?? this.applicationVersion,
+      mediumType: mediumType ?? this.mediumType,
+      locationPath: locationPath ?? this.locationPath,
+      comObjectInstanceRefs:
+          comObjectInstanceRefs ?? this.comObjectInstanceRefs,
     );
   }
 
   @override
   String toString() => 'DeviceInstance($id, address=$address)';
+}
+
+class KnxGroupAddressLink {
+  final String address;
+  final String? name;
+
+  const KnxGroupAddressLink({
+    required this.address,
+    this.name,
+  });
+
+  factory KnxGroupAddressLink.fromJson(Map<String, dynamic> json) {
+    return KnxGroupAddressLink(
+      address: json['address'] as String,
+      name: json['name'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'address': address,
+      if (name != null) 'name': name,
+    };
+  }
+
+  @override
+  String toString() => 'KnxGroupAddressLink($address, name: $name)';
 }
 
 /// Represents a Communication Object Instance Reference
@@ -106,19 +168,24 @@ class ComObjectInstanceRef {
   final String? channelId;
 
   // ── Enriched from ComObject definition (M-*/M-*_A-*.xml) ──
-  final String? name;         // e.g. "Relay1_Switch"
-  final String? description;  // from ComObject Text attr, e.g. "Relay 1 Switch"
-  final int? number;          // ComObject Number
+  final String? name; // e.g. "Relay1_Switch"
+  final String? description; // from ComObject Text attr, e.g. "Relay 1 Switch"
+  final int? number; // ComObject Number
   final String? functionText; // e.g. "Switch", "Dimming Control"
-  final String? objectSize;   // e.g. "1 Bit", "1 Byte"
+  final String? objectSize; // e.g. "1 Bit", "1 Byte"
   final String? datapointType; // e.g. "DPST-1-1"
-  final bool? readFlag;
-  final bool? writeFlag;
-  final bool? transmitFlag;
-  final bool? updateFlag;
+  final String? datapointText; // e.g. "switch", "dimming"
+  final String? priority; // e.g. "Low", "High"
+  final bool? communicationFlag; // C flag
+  final bool? readFlag; // R flag
+  final bool? writeFlag; // W flag
+  final bool? transmitFlag; // T flag
+  final bool? updateFlag; // U flag
+  final String? channelName; // e.g. "Buttons", "Sensors"
 
   // ── Resolved GA links ──
-  final List<String> groupAddresses; // resolved formatted GA addresses
+  final List<String> groupAddresses; // legacy formatted GA addresses
+  final List<KnxGroupAddressLink> linkedGroupAddresses; // address + name
 
   const ComObjectInstanceRef({
     this.refId,
@@ -131,11 +198,16 @@ class ComObjectInstanceRef {
     this.functionText,
     this.objectSize,
     this.datapointType,
+    this.datapointText,
+    this.priority,
+    this.communicationFlag,
     this.readFlag,
     this.writeFlag,
     this.transmitFlag,
     this.updateFlag,
+    this.channelName,
     this.groupAddresses = const [],
+    this.linkedGroupAddresses = const [],
   });
 
   factory ComObjectInstanceRef.fromXml(XmlElement element) {
@@ -159,12 +231,21 @@ class ComObjectInstanceRef {
       functionText: json['functionText'] as String?,
       objectSize: json['objectSize'] as String?,
       datapointType: json['datapointType'] as String?,
+      datapointText: json['datapointText'] as String?,
+      priority: json['priority'] as String?,
+      communicationFlag: json['communicationFlag'] as bool?,
       readFlag: json['readFlag'] as bool?,
       writeFlag: json['writeFlag'] as bool?,
       transmitFlag: json['transmitFlag'] as bool?,
       updateFlag: json['updateFlag'] as bool?,
-      groupAddresses: (json['groupAddresses'] as List<dynamic>?)
-              ?.cast<String>() ??
+      channelName: json['channelName'] as String?,
+      groupAddresses:
+          (json['groupAddresses'] as List<dynamic>?)?.cast<String>() ??
+              const [],
+      linkedGroupAddresses: (json['linkedGroupAddresses'] as List<dynamic>?)
+              ?.map((e) =>
+                  KnxGroupAddressLink.fromJson(e as Map<String, dynamic>))
+              .toList() ??
           const [],
     );
   }
@@ -184,11 +265,20 @@ class ComObjectInstanceRef {
         'objectSize': objectSize,
       if (datapointType != null && datapointType!.isNotEmpty)
         'datapointType': datapointType,
+      if (datapointText != null && datapointText!.isNotEmpty)
+        'datapointText': datapointText,
+      if (priority != null && priority!.isNotEmpty) 'priority': priority,
+      if (communicationFlag != null) 'communicationFlag': communicationFlag,
       if (readFlag != null) 'readFlag': readFlag,
       if (writeFlag != null) 'writeFlag': writeFlag,
       if (transmitFlag != null) 'transmitFlag': transmitFlag,
       if (updateFlag != null) 'updateFlag': updateFlag,
+      if (channelName != null && channelName!.isNotEmpty)
+        'channelName': channelName,
       if (groupAddresses.isNotEmpty) 'groupAddresses': groupAddresses,
+      if (linkedGroupAddresses.isNotEmpty)
+        'linkedGroupAddresses':
+            linkedGroupAddresses.map((e) => e.toJson()).toList(),
       if (links != null) 'links': links,
     };
   }
@@ -201,11 +291,16 @@ class ComObjectInstanceRef {
     String? functionText,
     String? objectSize,
     String? datapointType,
+    String? datapointText,
+    String? priority,
+    bool? communicationFlag,
     bool? readFlag,
     bool? writeFlag,
     bool? transmitFlag,
     bool? updateFlag,
+    String? channelName,
     List<String>? groupAddresses,
+    List<KnxGroupAddressLink>? linkedGroupAddresses,
   }) {
     return ComObjectInstanceRef(
       refId: refId,
@@ -218,11 +313,16 @@ class ComObjectInstanceRef {
       functionText: functionText ?? this.functionText,
       objectSize: objectSize ?? this.objectSize,
       datapointType: datapointType ?? this.datapointType,
+      datapointText: datapointText ?? this.datapointText,
+      priority: priority ?? this.priority,
+      communicationFlag: communicationFlag ?? this.communicationFlag,
       readFlag: readFlag ?? this.readFlag,
       writeFlag: writeFlag ?? this.writeFlag,
       transmitFlag: transmitFlag ?? this.transmitFlag,
       updateFlag: updateFlag ?? this.updateFlag,
+      channelName: channelName ?? this.channelName,
       groupAddresses: groupAddresses ?? this.groupAddresses,
+      linkedGroupAddresses: linkedGroupAddresses ?? this.linkedGroupAddresses,
     );
   }
 }

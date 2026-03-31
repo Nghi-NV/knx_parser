@@ -81,8 +81,7 @@ class KnxFlatProject {
               .toList() ??
           const [],
       groupAddresses: (json['groupAddresses'] as List<dynamic>?)
-              ?.map(
-                  (e) => KnxGroupAddress.fromJson(e as Map<String, dynamic>))
+              ?.map((e) => KnxGroupAddress.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
       groupRanges: (json['groupRanges'] as List<dynamic>?)
@@ -104,8 +103,7 @@ class KnxFlatProject {
       'projectName': projectName,
       'projectId': projectId,
       'groupAddressStyle': groupAddressStyle,
-      if (lastModified != null)
-        'lastModified': lastModified!.toIso8601String(),
+      if (lastModified != null) 'lastModified': lastModified!.toIso8601String(),
       if (etsVersion != null) 'etsVersion': etsVersion,
       if (schemaVersion != null) 'schemaVersion': schemaVersion,
       'hasSecure': hasSecure,
@@ -418,6 +416,13 @@ class KnxDevice {
   final List<ComObjectInstanceRef> comObjects;
   final String? securityToolKey;
 
+  final String? manufacturerName;
+  final String? orderNumber;
+  final String? applicationName;
+  final String? applicationVersion;
+  final String? mediumType;
+  final String? locationPath;
+
   const KnxDevice({
     required this.id,
     required this.address,
@@ -437,6 +442,12 @@ class KnxDevice {
     this.puid,
     this.comObjects = const [],
     this.securityToolKey,
+    this.manufacturerName,
+    this.orderNumber,
+    this.applicationName,
+    this.applicationVersion,
+    this.mediumType,
+    this.locationPath,
   });
 
   factory KnxDevice.fromJson(Map<String, dynamic> json) {
@@ -448,6 +459,12 @@ class KnxDevice {
       description: json['description'] as String?,
       comment: json['comment'] as String?,
       productName: json['productName'] as String?,
+      manufacturerName: json['manufacturerName'] as String?,
+      orderNumber: json['orderNumber'] as String?,
+      applicationName: json['applicationName'] as String?,
+      applicationVersion: json['applicationVersion'] as String?,
+      mediumType: json['mediumType'] as String?,
+      locationPath: json['locationPath'] as String?,
       roomId: json['roomId'] as String?,
       roomName: json['roomName'] as String?,
       areaId: json['areaId'] as String?,
@@ -477,6 +494,18 @@ class KnxDevice {
       if (comment != null && comment!.isNotEmpty) 'comment': comment,
       if (productName != null && productName!.isNotEmpty)
         'productName': productName,
+      if (manufacturerName != null && manufacturerName!.isNotEmpty)
+        'manufacturerName': manufacturerName,
+      if (orderNumber != null && orderNumber!.isNotEmpty)
+        'orderNumber': orderNumber,
+      if (applicationName != null && applicationName!.isNotEmpty)
+        'applicationName': applicationName,
+      if (applicationVersion != null && applicationVersion!.isNotEmpty)
+        'applicationVersion': applicationVersion,
+      if (mediumType != null && mediumType!.isNotEmpty)
+        'mediumType': mediumType,
+      if (locationPath != null && locationPath!.isNotEmpty)
+        'locationPath': locationPath,
       if (roomId != null) 'roomId': roomId,
       if (roomName != null) 'roomName': roomName,
       if (areaId != null) 'areaId': areaId,
@@ -639,8 +668,7 @@ class KnxSecureKeys {
               .toList() ??
           const [],
       deviceToolKeys: (json['deviceToolKeys'] as List<dynamic>?)
-              ?.map(
-                  (e) => KnxDeviceToolKey.fromJson(e as Map<String, dynamic>))
+              ?.map((e) => KnxDeviceToolKey.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
     );
@@ -660,8 +688,7 @@ class KnxSecureKeys {
         'groupKeys': groupKeys.map((k) => k.toJson()).toList(),
       if (deviceKeys.isNotEmpty)
         'deviceKeys': deviceKeys.map((k) => k.toJson()).toList(),
-      if (gaKeys.isNotEmpty)
-        'gaKeys': gaKeys.map((k) => k.toJson()).toList(),
+      if (gaKeys.isNotEmpty) 'gaKeys': gaKeys.map((k) => k.toJson()).toList(),
       if (deviceToolKeys.isNotEmpty)
         'deviceToolKeys': deviceToolKeys.map((k) => k.toJson()).toList(),
     };

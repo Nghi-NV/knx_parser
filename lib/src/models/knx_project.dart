@@ -103,8 +103,7 @@ class KnxProject {
     }
 
     // Separate locations into buildings, floors and rooms
-    final buildingLocations =
-        allLocations.where((l) => l.type == 'Building');
+    final buildingLocations = allLocations.where((l) => l.type == 'Building');
     final floorLocations = allLocations.where((l) => l.type == 'Floor');
     final roomLocations = allLocations.where((l) => l.type == 'Room');
 
@@ -117,10 +116,11 @@ class KnxProject {
     }
 
     // Detect hasSecure
-    final hasGaKeys = allGroupAddresses
-        .any((ga) => ga.key != null && ga.key!.isNotEmpty);
-    final hasDeviceKeys = deviceEntries.any(
-        (e) => e.device.securityToolKey != null && e.device.securityToolKey!.isNotEmpty);
+    final hasGaKeys =
+        allGroupAddresses.any((ga) => ga.key != null && ga.key!.isNotEmpty);
+    final hasDeviceKeys = deviceEntries.any((e) =>
+        e.device.securityToolKey != null &&
+        e.device.securityToolKey!.isNotEmpty);
     final hasKnxKeys = knxKeys != null &&
         (knxKeys!.groupKeys.isNotEmpty || knxKeys!.deviceKeys.isNotEmpty);
     final hasSecure = hasGaKeys || hasDeviceKeys || hasKnxKeys;
@@ -173,6 +173,19 @@ class KnxProject {
     final devices = deviceEntries.map((entry) {
       final d = entry.device;
       final room = deviceToRoom[d.id];
+
+      String? locPath = d.locationPath;
+      if (locPath == null && room != null) {
+        final pathParts = <String>[];
+        Location? current = room;
+        // ignore: unnecessary_null_comparison
+        while (current != null) {
+          pathParts.add(current.name);
+          current = current.parent;
+        }
+        locPath = pathParts.reversed.join(' > ');
+      }
+
       return KnxDevice(
         id: d.id,
         address: d.address,
@@ -190,8 +203,14 @@ class KnxProject {
         productRefId: d.productRefId,
         hardware2ProgramRefId: d.hardware2ProgramRefId,
         puid: d.puid,
-        comObjects: d.comObjectInstanceRefs,
         securityToolKey: d.securityToolKey,
+        manufacturerName: d.manufacturerName,
+        orderNumber: d.orderNumber,
+        applicationName: d.applicationName,
+        applicationVersion: d.applicationVersion,
+        mediumType: d.mediumType,
+        locationPath: locPath,
+        comObjects: d.comObjectInstanceRefs,
       );
     }).toList();
 

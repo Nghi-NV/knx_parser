@@ -50,12 +50,10 @@ class Location {
       if (puid != null) 'puid': puid,
       if (description != null) 'description': description,
       if (parent != null) 'parentId': parent!.id,
-      if (deviceInstanceIds.isNotEmpty)
-        'deviceInstanceIds': deviceInstanceIds,
+      if (deviceInstanceIds.isNotEmpty) 'deviceInstanceIds': deviceInstanceIds,
     };
   }
 
   @override
   String toString() => 'Location($type: "$name")';
 }
-

@@ -108,7 +108,12 @@ class KnxProjectParser {
     List<DatapointType> datapointTypes = [];
     String? projectId;
     // Product catalog: productRefId -> product name (Text attribute)
-    final Map<String, String> productCatalog = {};
+    final Map<String, Map<String, String>> productCatalog = {};
+    final Map<String, Map<String, String>> hw2ProgCatalog = {};
+    final Map<String, Map<String, String>> appCatalog = {};
+    final Map<String, String> channelCatalog = {};
+    final Map<String, String> mfgCatalog = {};
+    final Map<String, String> dpstCatalog = {};
     // ComObject definitions: suffixId -> ComObject attributes
     final Map<String, Map<String, String>> comObjectDefs = {};
     // ComObjectRef mapping: comObjectRefSuffix -> comObjectSuffix
@@ -220,24 +225,36 @@ class KnxProjectParser {
             final hwContent = _decodeUtf8WithBom(raw);
             final products = _parseProductCatalog(hwContent);
             productCatalog.addAll(products);
+            final h2ps = _parseHardware2ProgramCatalog(hwContent);
+            hw2ProgCatalog.addAll(h2ps);
           } catch (_) {}
-        } else if (f.name.contains('/M-') && f.name.endsWith('.xml') &&
-                   !f.name.contains('Hardware') && !f.name.contains('Catalog') &&
-                   !f.name.contains('Baggages')) {
+        } else if (f.name.contains('/M-') &&
+            f.name.endsWith('.xml') &&
+            !f.name.contains('Hardware') &&
+            !f.name.contains('Catalog') &&
+            !f.name.contains('Baggages')) {
           // Application program XML (M-*/M-*_A-*.xml)
           try {
             final raw = f.content as List<int>;
             final appContent = _decodeUtf8WithBom(raw);
-            _parseComObjectDefinitions(appContent, comObjectDefs, comObjectRefMap);
+            _parseComObjectDefinitions(
+                appContent, comObjectDefs, comObjectRefMap);
+            final apps = _parseApplicationProgramCatalog(appContent);
+            appCatalog.addAll(apps);
+            final channels = _parseChannelCatalog(appContent);
+            channelCatalog.addAll(channels);
           } catch (_) {}
         }
       }
 
       // Merge product names into devices
       if (productCatalog.isNotEmpty) {
-        installations = _mergeProductNamesIntoInstallations(
+        installations = _mergeProductDataIntoInstallations(
           installations,
           productCatalog,
+          hw2ProgCatalog,
+          appCatalog,
+          mfgCatalog,
         );
       }
 
@@ -247,6 +264,8 @@ class KnxProjectParser {
           installations,
           comObjectDefs,
           comObjectRefMap,
+          dpstCatalog,
+          channelCatalog,
         );
       }
 
@@ -254,10 +273,15 @@ class KnxProjectParser {
       if (datapointTypes.isEmpty) {
         for (final f in archive) {
           if (f.isFile && f.name == 'knx_master.xml') {
-            try {
-              final raw = f.content as List<int>;
-              datapointTypes = _parseDatapointTypes(_decodeUtf8WithBom(raw));
-            } catch (_) {}
+            final raw = f.content as List<int>;
+            final content = _decodeUtf8WithBom(raw);
+            datapointTypes = _parseDatapointTypes(content);
+            mfgCatalog.addAll(_parseManufacturers(content));
+            for (final dt in datapointTypes) {
+              for (final st in dt.subtypes) {
+                dpstCatalog[st.id] = st.text;
+              }
+            }
             break;
           }
         }
@@ -361,8 +385,138 @@ class KnxProjectParser {
         .toList();
   }
 
+  /// Parse manufacturers from knx_master.xml
+  Map<String, String> _parseManufacturers(String xmlContent) {
+    String content = xmlContent;
+    if (content.codeUnitAt(0) == 0xFEFF) {
+      content = content.substring(1);
+    }
+    final document = XmlDocument.parse(content);
+    final masterDataElements = document.findAllElements('MasterData');
+    if (masterDataElements.isEmpty) return {};
+
+    final manufacturersElement =
+        masterDataElements.first.getElement('Manufacturers');
+    if (manufacturersElement == null) return {};
+
+    final manufacturers = <String, String>{};
+    for (final element in manufacturersElement.findElements('Manufacturer')) {
+      final id = element.getAttribute('Id');
+      final name = element.getAttribute('Name');
+      if (id != null && name != null) {
+        manufacturers[id] = name;
+      }
+    }
+    return manufacturers;
+  }
+
+  /// Parse hardware to program catalog from Hardware.xml.
+  /// Returns a map of Hardware2ProgramRefId -> Map of attributes (mediumType).
+  Map<String, Map<String, String>> _parseHardware2ProgramCatalog(
+      String xmlContent) {
+    final result = <String, Map<String, String>>{};
+    try {
+      final document = XmlDocument.parse(xmlContent);
+      for (final hp in document.findAllElements('Hardware2Program')) {
+        final id = hp.getAttribute('Id');
+        final mediumTypes = hp.getAttribute('MediumTypes'); // e.g. "MT-0"
+        if (id != null && mediumTypes != null) {
+          String medium = mediumTypes;
+          if (mediumTypes.contains('MT-0'))
+            medium = 'TP';
+          else if (mediumTypes.contains('MT-1'))
+            medium = 'PL';
+          else if (mediumTypes.contains('MT-2'))
+            medium = 'RF';
+          else if (mediumTypes.contains('MT-5')) medium = 'IP';
+          result[id] = {'mediumType': medium};
+        }
+      }
+    } catch (_) {}
+    return result;
+  }
+
+  /// Parse application programs from M-*-*.xml.
+  /// Returns a map of ApplicationProgramId -> Map of attributes (name, version).
+  Map<String, Map<String, String>> _parseApplicationProgramCatalog(
+      String xmlContent) {
+    final result = <String, Map<String, String>>{};
+    try {
+      final document = XmlDocument.parse(xmlContent);
+      for (final app in document.findAllElements('ApplicationProgram')) {
+        final id = app.getAttribute('Id');
+        final name = app.getAttribute('Name');
+        final version = app.getAttribute('ApplicationVersion');
+        if (id != null) {
+          result[id] = {
+            if (name != null) 'name': name,
+            if (version != null) 'version': '0.$version',
+          };
+        }
+      }
+    } catch (_) {}
+    return result;
+  }
+
+  /// Parse channels from M-*-*.xml.
+  /// Returns a map of ChannelId -> ChannelName.
+  Map<String, String> _parseChannelCatalog(String xmlContent) {
+    final result = <String, String>{};
+    try {
+      final document = XmlDocument.parse(xmlContent);
+      for (final ch in document.findAllElements('Channel')) {
+        final id = ch.getAttribute('Id');
+        final name = ch.getAttribute('Name') ?? ch.getAttribute('Text');
+        if (id != null && name != null) {
+          result[id] = name;
+        }
+      }
+    } catch (_) {}
+    return result;
+  }
+
+  /// Parse product catalog from Hardware.xml.
+  /// Returns a map of ProductRefId -> Map of attributes (name, orderNumber).
+  Map<String, Map<String, String>> _parseProductCatalog(String xmlContent) {
+    final result = <String, Map<String, String>>{};
+    try {
+      final document = XmlDocument.parse(xmlContent);
+      for (final product in document.findAllElements('Product')) {
+        final id = product.getAttribute('Id');
+        final text = product.getAttribute('Text');
+        final orderNumber = product.getAttribute('OrderNumber');
+        if (id != null) {
+          result[id] = {
+            if (text != null && text.isNotEmpty) 'name': text,
+            if (orderNumber != null && orderNumber.isNotEmpty)
+              'orderNumber': orderNumber,
+          };
+        }
+      }
+    } catch (_) {}
+    return result;
+  }
+
   Exception _secureProjectHint(String msg) {
     return Exception('$msg\nSee also: docs/RESEARCH_KNXPROJ_SECURE.md');
+  }
+
+  /// Merge hardware/product data into installations' devices
+  List<Installation> _mergeProductDataIntoInstallations(
+    List<Installation> installations,
+    Map<String, Map<String, String>> productCatalog,
+    Map<String, Map<String, String>> hw2ProgCatalog,
+    Map<String, Map<String, String>> appCatalog,
+    Map<String, String> mfgCatalog,
+  ) {
+    return installations.map((installation) {
+      return installation.copyWithEnrichmentCatalogs(
+        productCatalog,
+        hw2ProgCatalog,
+        appCatalog,
+        mfgCatalog,
+      );
+    }).toList();
   }
 
   /// Parse from a directory that already contains extracted project files
@@ -469,8 +623,7 @@ class KnxProjectParser {
     String? password,
     KnxKeys? knxKeys,
   }) async {
-    final project =
-        await parse(filePath, password: password, knxKeys: knxKeys);
+    final project = await parse(filePath, password: password, knxKeys: knxKeys);
     return project.toFlat();
   }
 
@@ -481,7 +634,8 @@ class KnxProjectParser {
     String? password,
     KnxKeys? knxKeys,
   }) async {
-    final flat = await parseToFlat(filePath, password: password, knxKeys: knxKeys);
+    final flat =
+        await parseToFlat(filePath, password: password, knxKeys: knxKeys);
     final encoder =
         pretty ? const JsonEncoder.withIndent('  ') : const JsonEncoder();
     return encoder.convert(flat.toJson());
@@ -503,35 +657,6 @@ class KnxProjectParser {
     final outputFile = io.File(outputPath);
     await outputFile.writeAsString(jsonContent);
     return outputFile;
-  }
-
-  /// Parse product catalog from Hardware.xml
-  /// Returns a map of productRefId -> product name (Text attribute)
-  Map<String, String> _parseProductCatalog(String xmlContent) {
-    final result = <String, String>{};
-    try {
-      final document = XmlDocument.parse(xmlContent);
-      // Find all Product elements
-      final products = document.findAllElements('Product');
-      for (final product in products) {
-        final id = product.getAttribute('Id');
-        final text = product.getAttribute('Text');
-        if (id != null && text != null && text.isNotEmpty) {
-          result[id] = text;
-        }
-      }
-    } catch (_) {}
-    return result;
-  }
-
-  /// Merge product names into installations' devices
-  List<Installation> _mergeProductNamesIntoInstallations(
-    List<Installation> installations,
-    Map<String, String> productCatalog,
-  ) {
-    return installations.map((installation) {
-      return installation.copyWithProductCatalog(productCatalog);
-    }).toList();
   }
 
   /// Parse ComObject definitions and ComObjectRef mappings from application program XML.
@@ -661,11 +786,37 @@ class KnxProjectParser {
     return resolved;
   }
 
+  /// Resolve GA links ("GA-1 GA-2") to KnxGroupAddressLink objects using installation's GA list.
+  List<KnxGroupAddressLink> _resolveGaLinksObjects(
+    String? links,
+    List<Installation> installations,
+  ) {
+    if (links == null || links.isEmpty) return [];
+    final gaIds = links.split(' ').where((s) => s.isNotEmpty).toList();
+    final resolved = <KnxGroupAddressLink>[];
+    for (final gaId in gaIds) {
+      for (final inst in installations) {
+        for (final ga in inst.groupAddresses) {
+          if (ga.id.endsWith(gaId) || ga.id.endsWith('_$gaId')) {
+            resolved.add(KnxGroupAddressLink(
+              address: ga.formattedAddress,
+              name: ga.name,
+            ));
+            break;
+          }
+        }
+      }
+    }
+    return resolved;
+  }
+
   /// Enrich all ComObjectInstanceRefs in installations with definition data.
   List<Installation> _enrichComObjectsInInstallations(
     List<Installation> installations,
     Map<String, Map<String, String>> comObjectDefs,
     Map<String, Map<String, String>> comObjectRefMap,
+    Map<String, String> dpstCatalog,
+    Map<String, String> channelCatalog,
   ) {
     return installations.map((inst) {
       final updatedTopology = Topology(
@@ -689,13 +840,23 @@ class KnxProjectParser {
                     puid: seg.puid,
                     devices: seg.devices.map((d) {
                       return _enrichDeviceComObjects(
-                          d, comObjectDefs, comObjectRefMap, installations);
+                          d,
+                          comObjectDefs,
+                          comObjectRefMap,
+                          installations,
+                          dpstCatalog,
+                          channelCatalog);
                     }).toList(),
                   );
                 }).toList(),
                 devices: line.devices.map((d) {
                   return _enrichDeviceComObjects(
-                      d, comObjectDefs, comObjectRefMap, installations);
+                      d,
+                      comObjectDefs,
+                      comObjectRefMap,
+                      installations,
+                      dpstCatalog,
+                      channelCatalog);
                 }).toList(),
               );
             }).toList(),
@@ -720,6 +881,8 @@ class KnxProjectParser {
     Map<String, Map<String, String>> comObjectDefs,
     Map<String, Map<String, String>> comObjectRefMap,
     List<Installation> installations,
+    Map<String, String> dpstCatalog,
+    Map<String, String> channelCatalog,
   ) {
     // Determine app program prefix from hardware2ProgramRefId
     // e.g. "M-0085_H-RL.2D4CH.2D2025-1_HP-07E9-01-1D78" -> "M-0085_A-07E9-01-1D78"
@@ -730,9 +893,8 @@ class KnxProjectParser {
     // Extract HP suffix and build exact app program prefix
     // HP-07E9-01-1D78 -> A-07E9-01-1D78
     final hpMatch = RegExp(r'HP-(.+)$').firstMatch(h2pRefId);
-    final appProgramPrefix = hpMatch != null
-        ? '${mfgPrefix}_A-${hpMatch.group(1)}'
-        : null;
+    final appProgramPrefix =
+        hpMatch != null ? '${mfgPrefix}_A-${hpMatch.group(1)}' : null;
 
     final enrichedComObjects = device.comObjectInstanceRefs.map((co) {
       if (co.refId == null) return co;
@@ -743,8 +905,7 @@ class KnxProjectParser {
       // For module ComObjects, strip module instance part:
       // e.g. "MD-1_M-1_MI-1_O-2-1_R-1" -> "MD-1_O-2-1_R-1"
       final refId = co.refId!;
-      final strippedRefId =
-          refId.replaceAll(RegExp(r'_M-\d+_MI-\d+'), '');
+      final strippedRefId = refId.replaceAll(RegExp(r'_M-\d+_MI-\d+'), '');
 
       // Try exact app program prefix first (derived from HP suffix)
       if (appProgramPrefix != null) {
@@ -777,12 +938,14 @@ class KnxProjectParser {
 
       // Fallback: try suffix match across all defs (original + stripped)
       if (def == null) {
-        for (final suffix in [refId, if (strippedRefId != refId) strippedRefId]) {
+        for (final suffix in [
+          refId,
+          if (strippedRefId != refId) strippedRefId
+        ]) {
           for (final entry in comObjectRefMap.entries) {
             if (entry.key.endsWith('_$suffix')) {
               final comObjId = entry.value['_comObjectId'];
-              final baseDef =
-                  comObjId != null ? comObjectDefs[comObjId] : null;
+              final baseDef = comObjId != null ? comObjectDefs[comObjId] : null;
               def = baseDef != null
                   ? _mergeComObjectAttrs(baseDef, entry.value)
                   : entry.value;
@@ -794,8 +957,19 @@ class KnxProjectParser {
       }
 
       final resolvedGAs = _resolveGaLinks(co.links, installations);
+      final resolvedGAsLinks = _resolveGaLinksObjects(co.links, installations);
 
       if (def == null && resolvedGAs.isEmpty) return co;
+
+      String? dptText;
+      if (def != null && def['DatapointType'] != null) {
+        dptText = dpstCatalog[def['DatapointType']];
+      }
+
+      String? chName;
+      if (co.channelId != null) {
+        chName = channelCatalog[co.channelId];
+      }
 
       return co.copyWithDefinition(
         name: def?['Name'],
@@ -804,11 +978,18 @@ class KnxProjectParser {
         functionText: def?['FunctionText'],
         objectSize: def?['ObjectSize'],
         datapointType: def?['DatapointType'],
+        datapointText: dptText,
+        priority: def?['Priority'],
+        communicationFlag:
+            def != null ? _flagValue(def['CommunicationFlag']) : null,
         readFlag: def != null ? _flagValue(def['ReadFlag']) : null,
         writeFlag: def != null ? _flagValue(def['WriteFlag']) : null,
         transmitFlag: def != null ? _flagValue(def['TransmitFlag']) : null,
         updateFlag: def != null ? _flagValue(def['UpdateFlag']) : null,
+        channelName: chName,
         groupAddresses: resolvedGAs.isNotEmpty ? resolvedGAs : null,
+        linkedGroupAddresses:
+            resolvedGAsLinks.isNotEmpty ? resolvedGAsLinks : null,
       );
     }).toList();
 

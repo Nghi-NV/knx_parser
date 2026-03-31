@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.12.0] - 2026-03-31
+
+### Added
+- **Complete ETS Device Information**: `KnxDevice` and `DeviceInstance` enriched with full topology and hardware info:
+  - `manufacturerName`: Parsed from `knx_master.xml`.
+  - `orderNumber` & `mediumType`: Parsed from `Hardware.xml`.
+  - `applicationName` & `applicationVersion`: Parsed from `M-*-*.xml`, with version uniformly mapped to `0.x` representation.
+  - `locationPath`: Auto-generated from `<Space>` tree hierarchy traversal (e.g., `Building > Floor > Room`).
+- **Complete ETS Communication Objects**: `ComObjectInstanceRef` enriched with detailed flags and metadata:
+  - `priority`, `readFlag`, `writeFlag`, `communicationFlag`, `transmitFlag`, and `updateFlag` from `ComObject` definition.
+  - `datapointText` (e.g., `"switch"`, `"dimming"`): Translated gracefully using `knx_master.xml`'s `DatapointSubtype` mapping.
+  - `channelName`: Expanded from application program XML (`<Channel>` elements).
+  - `linkedGroupAddresses`: Provided as a list of `{address, name}` objects instead of just a raw string, for more flexible frontend rendering.
 ## [1.11.2] - 2026-03-30
 
 ### Fixed
