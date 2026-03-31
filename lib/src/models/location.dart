@@ -24,7 +24,6 @@ class Location {
 
   /// Parse from XML element
   factory Location.fromXml(XmlElement element, {Location? parent}) {
-    // Parse DeviceInstanceRef children
     final deviceIds = element
         .findElements('DeviceInstanceRef')
         .map((ref) => ref.getAttribute('RefId'))
@@ -33,12 +32,20 @@ class Location {
         .toList();
 
     // Parse GroupAddressRef children
-    final gaIds = element
+    final gaIdsDirect = element
         .findElements('GroupAddressRef')
         .map((ref) => ref.getAttribute('RefId'))
         .where((id) => id != null && id.isNotEmpty)
-        .cast<String>()
-        .toList();
+        .cast<String>();
+
+    final gaIdsFunction = element
+        .findElements('Function')
+        .expand((f) => f.findElements('GroupAddressRef'))
+        .map((ref) => ref.getAttribute('RefId'))
+        .where((id) => id != null && id.isNotEmpty)
+        .cast<String>();
+
+    final gaIds = [...gaIdsDirect, ...gaIdsFunction].toList();
 
     return Location(
       id: element.getAttribute('Id') ?? '',
