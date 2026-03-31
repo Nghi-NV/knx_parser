@@ -9,6 +9,7 @@ class Location {
   final String? description;
   final Location? parent;
   final List<String> deviceInstanceIds;
+  final List<String> groupAddressRefIds;
 
   const Location({
     required this.id,
@@ -18,6 +19,7 @@ class Location {
     this.description,
     this.parent,
     this.deviceInstanceIds = const [],
+    this.groupAddressRefIds = const [],
   });
 
   /// Parse from XML element
@@ -25,6 +27,14 @@ class Location {
     // Parse DeviceInstanceRef children
     final deviceIds = element
         .findElements('DeviceInstanceRef')
+        .map((ref) => ref.getAttribute('RefId'))
+        .where((id) => id != null && id.isNotEmpty)
+        .cast<String>()
+        .toList();
+
+    // Parse GroupAddressRef children
+    final gaIds = element
+        .findElements('GroupAddressRef')
         .map((ref) => ref.getAttribute('RefId'))
         .where((id) => id != null && id.isNotEmpty)
         .cast<String>()
@@ -38,6 +48,7 @@ class Location {
       description: element.getAttribute('Description'),
       parent: parent,
       deviceInstanceIds: deviceIds,
+      groupAddressRefIds: gaIds,
     );
   }
 
@@ -51,6 +62,7 @@ class Location {
       if (description != null) 'description': description,
       if (parent != null) 'parentId': parent!.id,
       if (deviceInstanceIds.isNotEmpty) 'deviceInstanceIds': deviceInstanceIds,
+      if (groupAddressRefIds.isNotEmpty) 'groupAddressRefIds': groupAddressRefIds,
     };
   }
 

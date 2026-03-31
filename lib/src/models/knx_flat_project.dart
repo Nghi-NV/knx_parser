@@ -538,6 +538,9 @@ class KnxGroupAddress {
   final String name;
   final String? datapointType;
   final String? rangeName;
+  final String? roomId;
+  final String? roomName;
+  final String? locationPath;
   final String? key;
   final List<KnxDeviceRef> devices;
 
@@ -548,6 +551,9 @@ class KnxGroupAddress {
     required this.name,
     this.datapointType,
     this.rangeName,
+    this.roomId,
+    this.roomName,
+    this.locationPath,
     this.key,
     this.devices = const [],
   });
@@ -560,6 +566,9 @@ class KnxGroupAddress {
       name: json['name'] as String,
       datapointType: json['datapointType'] as String?,
       rangeName: json['rangeName'] as String?,
+      roomId: json['roomId'] as String?,
+      roomName: json['roomName'] as String?,
+      locationPath: json['locationPath'] as String?,
       key: json['key'] as String?,
       devices: (json['devices'] as List<dynamic>?)
               ?.map((e) => KnxDeviceRef.fromJson(e as Map<String, dynamic>))
@@ -576,6 +585,9 @@ class KnxGroupAddress {
       'name': name,
       if (datapointType != null) 'datapointType': datapointType,
       if (rangeName != null) 'rangeName': rangeName,
+      if (roomId != null) 'roomId': roomId,
+      if (roomName != null) 'roomName': roomName,
+      if (locationPath != null) 'locationPath': locationPath,
       if (key != null) 'key': key,
       if (devices.isNotEmpty)
         'devices': devices.map((d) => d.toJson()).toList(),

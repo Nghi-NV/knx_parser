@@ -107,11 +107,17 @@ class KnxProject {
     final floorLocations = allLocations.where((l) => l.type == 'Floor');
     final roomLocations = allLocations.where((l) => l.type == 'Room');
 
-    // Build device → room reverse lookup
     final deviceToRoom = <String, Location>{};
+    final gaToLocation = <String, Location>{};
+    
     for (final room in roomLocations) {
       for (final devId in room.deviceInstanceIds) {
         deviceToRoom[devId] = room;
+      }
+    }
+    for (final loc in allLocations) {
+      for (final gaRefId in loc.groupAddressRefIds) {
+        gaToLocation[gaRefId] = loc;
       }
     }
 
@@ -239,6 +245,30 @@ class KnxProject {
 
     // Build group addresses
     final groupAddresses = allGroupAddresses.map((ga) {
+      Location? loc = gaToLocation[ga.id];
+
+      // Fallback matching logic for GA IDs if exact match fails
+      if (loc == null) {
+        for (final entry in gaToLocation.entries) {
+          if (ga.id.endsWith(entry.key) || entry.key.endsWith(ga.id)) {
+            loc = entry.value;
+            break;
+          }
+        }
+      }
+
+      String? locPath;
+      if (loc != null) {
+        final pathParts = <String>[];
+        Location? current = loc;
+        // ignore: unnecessary_null_comparison
+        while (current != null) {
+          pathParts.add(current.name);
+          current = current.parent;
+        }
+        locPath = pathParts.reversed.join(' > ');
+      }
+
       return KnxGroupAddress(
         id: ga.id,
         address: ga.address,
@@ -246,6 +276,9 @@ class KnxProject {
         name: ga.name,
         datapointType: _formatDpt(ga.datapointType),
         rangeName: ga.range?.name,
+        roomId: loc?.type == 'Room' ? loc?.id : null,
+        roomName: loc?.type == 'Room' ? loc?.name : null,
+        locationPath: locPath,
         key: ga.key,
         devices: gaToDeviceRefs[ga.id] ?? const [],
       );

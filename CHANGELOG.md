@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] - 2026-03-31
+
+### Added
+- **Group Address Topology Mapping**: Devices aren't the only elements that can be assigned to a room in ETS. Direct `GroupAddressRef` assignments mapped inside `<Space>` (Buildings/Floors/Rooms) are now correctly extracted.
+  - `KnxGroupAddress` objects are newly enriched with `roomId`, `roomName`, and `locationPath` attributes.
+
 ## [1.12.0] - 2026-03-31
 
 ### Added
