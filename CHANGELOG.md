@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-04-03
+
+### Added
+- **Datapoint Types per Device**: `KnxDevice` now has a `datapointTypes` property, providing aggregated unique Datapoint Types from all its ComObjects.
+- **Module Instances Parsing**: Parsed `ModuleInstances` attributes (arguments) directly from `DeviceInstance` to distinguish between same-type modules.
+- Added `KnxModuleInstance` model representation.
+
+### Fixed
+- **Missing Enrichment Data**: Preserved all enrichment metadata fields (`applicationName`, `productName`, `orderNumber`, etc.) that were accidentally lost during the device copy step within the ComObject merging process.
+- **Module-based ComObjects Override**: Module instances (M-1, M-2, etc.) no longer share the identical base object reference descriptions. The parser now implements auto-resolution to calculate dynamic properties mapping templates (`{{ChNum}}`) and `BaseNumber` logic with argument values natively from `Hardware.xml` references.
+
 ## [1.12.2] - 2026-03-31
 
 ### Changed

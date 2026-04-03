@@ -415,6 +415,7 @@ class KnxDevice {
   final int? puid;
   final List<ComObjectInstanceRef> comObjects;
   final String? securityToolKey;
+  final List<String> datapointTypes;
 
   final String? manufacturerName;
   final String? orderNumber;
@@ -442,6 +443,7 @@ class KnxDevice {
     this.puid,
     this.comObjects = const [],
     this.securityToolKey,
+    this.datapointTypes = const [],
     this.manufacturerName,
     this.orderNumber,
     this.applicationName,
@@ -480,6 +482,10 @@ class KnxDevice {
               .toList() ??
           const [],
       securityToolKey: json['securityToolKey'] as String?,
+      datapointTypes: (json['datapointTypes'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
     );
   }
 
@@ -519,6 +525,7 @@ class KnxDevice {
       if (comObjects.isNotEmpty)
         'comObjects': comObjects.map((c) => c.toJson()).toList(),
       if (securityToolKey != null) 'securityToolKey': securityToolKey,
+      if (datapointTypes.isNotEmpty) 'datapointTypes': datapointTypes,
     };
   }
 

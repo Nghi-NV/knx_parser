@@ -109,7 +109,7 @@ class KnxProject {
 
     final deviceToRoom = <String, Location>{};
     final gaToLocation = <String, Location>{};
-    
+
     for (final room in roomLocations) {
       for (final devId in room.deviceInstanceIds) {
         deviceToRoom[devId] = room;
@@ -217,6 +217,11 @@ class KnxProject {
         mediumType: d.mediumType,
         locationPath: locPath,
         comObjects: d.comObjectInstanceRefs,
+        datapointTypes: d.comObjectInstanceRefs
+            .map((co) => co.datapointType)
+            .whereType<String>()
+            .toSet()
+            .toList(),
       );
     }).toList();
 

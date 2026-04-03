@@ -69,7 +69,8 @@ class Location {
       if (description != null) 'description': description,
       if (parent != null) 'parentId': parent!.id,
       if (deviceInstanceIds.isNotEmpty) 'deviceInstanceIds': deviceInstanceIds,
-      if (groupAddressRefIds.isNotEmpty) 'groupAddressRefIds': groupAddressRefIds,
+      if (groupAddressRefIds.isNotEmpty)
+        'groupAddressRefIds': groupAddressRefIds,
     };
   }
 

@@ -114,6 +114,8 @@ class KnxProjectParser {
     final Map<String, String> channelCatalog = {};
     final Map<String, String> mfgCatalog = {};
     final Map<String, String> dpstCatalog = {};
+    // ModuleDef argument names: fullArgId -> argName (e.g. "ChNum")
+    final Map<String, String> moduleArgNames = {};
     // ComObject definitions: suffixId -> ComObject attributes
     final Map<String, Map<String, String>> comObjectDefs = {};
     // ComObjectRef mapping: comObjectRefSuffix -> comObjectSuffix
@@ -238,12 +240,31 @@ class KnxProjectParser {
             final raw = f.content as List<int>;
             final appContent = _decodeUtf8WithBom(raw);
             _parseComObjectDefinitions(
-                appContent, comObjectDefs, comObjectRefMap);
+                appContent, comObjectDefs, comObjectRefMap, moduleArgNames);
             final apps = _parseApplicationProgramCatalog(appContent);
             appCatalog.addAll(apps);
             final channels = _parseChannelCatalog(appContent);
             channelCatalog.addAll(channels);
           } catch (_) {}
+        }
+      }
+
+      // knx_master.xml is usually at the outer archive level (not inside P-*.zip)
+      // Parse BEFORE enrichment so dpstCatalog and mfgCatalog are available
+      if (datapointTypes.isEmpty) {
+        for (final f in archive) {
+          if (f.isFile && f.name == 'knx_master.xml') {
+            final raw = f.content as List<int>;
+            final content = _decodeUtf8WithBom(raw);
+            datapointTypes = _parseDatapointTypes(content);
+            mfgCatalog.addAll(_parseManufacturers(content));
+            for (final dt in datapointTypes) {
+              for (final st in dt.subtypes) {
+                dpstCatalog[st.id] = st.text;
+              }
+            }
+            break;
+          }
         }
       }
 
@@ -266,25 +287,8 @@ class KnxProjectParser {
           comObjectRefMap,
           dpstCatalog,
           channelCatalog,
+          moduleArgNames,
         );
-      }
-
-      // knx_master.xml is usually at the outer archive level (not inside P-*.zip)
-      if (datapointTypes.isEmpty) {
-        for (final f in archive) {
-          if (f.isFile && f.name == 'knx_master.xml') {
-            final raw = f.content as List<int>;
-            final content = _decodeUtf8WithBom(raw);
-            datapointTypes = _parseDatapointTypes(content);
-            mfgCatalog.addAll(_parseManufacturers(content));
-            for (final dt in datapointTypes) {
-              for (final st in dt.subtypes) {
-                dpstCatalog[st.id] = st.text;
-              }
-            }
-            break;
-          }
-        }
       }
 
       if (projectInfo == null) {
@@ -666,6 +670,7 @@ class KnxProjectParser {
     String xmlContent,
     Map<String, Map<String, String>> comObjectDefs,
     Map<String, Map<String, String>> comObjectRefMap,
+    Map<String, String> moduleArgNames,
   ) {
     try {
       final document = XmlDocument.parse(xmlContent);
@@ -693,6 +698,20 @@ class KnxProjectParser {
         // Store the ComObject RefId for lookup
         if (refId != null) attrs['_comObjectId'] = refId;
         comObjectRefMap[id] = attrs;
+      }
+
+      // Parse ModuleDef argument names for template resolution
+      for (final moduleDef in document.findAllElements('ModuleDef')) {
+        final argsContainer = moduleDef.getElement('Arguments');
+        if (argsContainer != null) {
+          for (final arg in argsContainer.findElements('Argument')) {
+            final id = arg.getAttribute('Id');
+            final name = arg.getAttribute('Name');
+            if (id != null && name != null) {
+              moduleArgNames[id] = name;
+            }
+          }
+        }
       }
     } catch (_) {}
   }
@@ -817,6 +836,7 @@ class KnxProjectParser {
     Map<String, Map<String, String>> comObjectRefMap,
     Map<String, String> dpstCatalog,
     Map<String, String> channelCatalog,
+    Map<String, String> moduleArgNames,
   ) {
     return installations.map((inst) {
       final updatedTopology = Topology(
@@ -838,26 +858,34 @@ class KnxProjectParser {
                     number: seg.number,
                     mediumTypeRefId: seg.mediumTypeRefId,
                     puid: seg.puid,
-                    devices: seg.devices.map((d) {
+                    devices: seg.devices
+                        .map((d) {
+                          return _enrichDeviceComObjects(
+                              d,
+                              comObjectDefs,
+                              comObjectRefMap,
+                              installations,
+                              dpstCatalog,
+                              channelCatalog,
+                              moduleArgNames);
+                        })
+                        .toList()
+                        .cast<DeviceInstance>(),
+                  );
+                }).toList(),
+                devices: line.devices
+                    .map((d) {
                       return _enrichDeviceComObjects(
                           d,
                           comObjectDefs,
                           comObjectRefMap,
                           installations,
                           dpstCatalog,
-                          channelCatalog);
-                    }).toList(),
-                  );
-                }).toList(),
-                devices: line.devices.map((d) {
-                  return _enrichDeviceComObjects(
-                      d,
-                      comObjectDefs,
-                      comObjectRefMap,
-                      installations,
-                      dpstCatalog,
-                      channelCatalog);
-                }).toList(),
+                          channelCatalog,
+                          moduleArgNames);
+                    })
+                    .toList()
+                    .cast<DeviceInstance>(),
               );
             }).toList(),
           );
@@ -883,6 +911,7 @@ class KnxProjectParser {
     List<Installation> installations,
     Map<String, String> dpstCatalog,
     Map<String, String> channelCatalog,
+    Map<String, String> moduleArgNames,
   ) {
     // Determine app program prefix from hardware2ProgramRefId
     // e.g. "M-0085_H-RL.2D4CH.2D2025-1_HP-07E9-01-1D78" -> "M-0085_A-07E9-01-1D78"
@@ -956,6 +985,110 @@ class KnxProjectParser {
         }
       }
 
+      // ── Module-based ComObject resolution ──
+      // Resolve BaseNumber (actual number) and {{ChNum}} template for module instances
+      final isModuleComObject = refId.contains(RegExp(r'_M-\d+_MI-\d+'));
+      if (isModuleComObject && def != null) {
+        // Extract module instance prefix from refId: "MD-1_M-7_MI-1" from "MD-1_M-7_MI-1_O-2-1_R-1"
+        final miMatch = RegExp(r'(MD-\d+_M-\d+_MI-\d+)').firstMatch(refId);
+        if (miMatch != null) {
+          final miPrefix = miMatch.group(1)!;
+          // Find matching module instance from device
+          KnxModuleInstance? moduleInstance;
+          for (final mi in device.moduleInstances) {
+            if (mi.id == miPrefix) {
+              moduleInstance = mi;
+              break;
+            }
+          }
+
+          if (moduleInstance != null) {
+            // Make def mutable for modifications
+            def = Map<String, String>.from(def);
+
+            // 1. Resolve BaseNumber: actual number = BaseNumberArgValue + NumberOffset
+            final baseNumberRef = def['BaseNumber'];
+            if (baseNumberRef != null) {
+              // Extract arg suffix: "M-0085_A-00B2-11-FDD4_MD-1_A-2" -> "MD-1_A-2"
+              final argSuffixMatch =
+                  RegExp(r'(MD-\d+_A-\d+)$').firstMatch(baseNumberRef);
+              if (argSuffixMatch != null) {
+                final argRefSuffix = argSuffixMatch.group(1)!;
+                final baseValue =
+                    int.tryParse(moduleInstance.arguments[argRefSuffix] ?? '');
+                final offset = int.tryParse(def['Number'] ?? '');
+                if (baseValue != null && offset != null) {
+                  def['Number'] = (baseValue + offset).toString();
+                }
+              }
+            }
+
+            // 2. Resolve {{ChNum}} and other templates in Text (description)
+            // Build a name-to-value map from module arguments
+            final nameToValue = <String, String>{};
+            for (final argEntry in moduleInstance.arguments.entries) {
+              // Find the argument name from moduleArgNames catalog
+              for (final defEntry in moduleArgNames.entries) {
+                // Match by suffix: "M-0085_..._MD-1_A-3" ends with "MD-1_A-3"
+                if (defEntry.key.endsWith('_${argEntry.key}') ||
+                    defEntry.key.endsWith(argEntry.key)) {
+                  nameToValue[defEntry.value] = argEntry.value;
+                  break;
+                }
+              }
+            }
+
+            if (nameToValue.isNotEmpty) {
+              // Try to resolve template from ComObjectRef (raw, before merge)
+              String? templateText;
+              if (appProgramPrefix != null) {
+                // Look up raw ComObjectRef for this refId
+                for (final suffix in [refId, strippedRefId]) {
+                  final fullRefId = '${appProgramPrefix}_$suffix';
+                  final rawRef = comObjectRefMap[fullRefId];
+                  if (rawRef != null && rawRef['Text'] != null) {
+                    templateText = rawRef['Text'];
+                    break;
+                  }
+                }
+              }
+
+              // Resolve template if found
+              if (templateText != null && templateText.contains('{{')) {
+                for (final entry in nameToValue.entries) {
+                  templateText =
+                      templateText!.replaceAll('{{${entry.key}}}', entry.value);
+                }
+                // Remove remaining unresolved templates like {{0:...}}
+                templateText = templateText!
+                    .replaceAll(RegExp(r'\{\{[^}]*\}\}'), '')
+                    .trim();
+                // Clean up trailing separators
+                templateText =
+                    templateText.replaceAll(RegExp(r'\s*-\s*$'), '').trim();
+                if (templateText.isNotEmpty) {
+                  def['Text'] = templateText;
+                }
+              } else if (def['Text'] != null) {
+                // Fallback: resolve templates in base Text too
+                var baseText = def['Text']!;
+                var resolved = false;
+                for (final entry in nameToValue.entries) {
+                  if (baseText.contains('{{${entry.key}}}')) {
+                    baseText =
+                        baseText.replaceAll('{{${entry.key}}}', entry.value);
+                    resolved = true;
+                  }
+                }
+                if (resolved) {
+                  def['Text'] = baseText;
+                }
+              }
+            }
+          }
+        }
+      }
+
       final resolvedGAs = _resolveGaLinks(co.links, installations);
       final resolvedGAsLinks = _resolveGaLinksObjects(co.links, installations);
 
@@ -993,18 +1126,9 @@ class KnxProjectParser {
       );
     }).toList();
 
-    return DeviceInstance(
-      id: device.id,
-      address: device.address,
-      name: device.name,
-      description: device.description,
-      comment: device.comment,
-      productName: device.productName,
-      productRefId: device.productRefId,
-      hardware2ProgramRefId: device.hardware2ProgramRefId,
-      puid: device.puid,
+    // Preserve ALL enriched fields from previous pass
+    return device.copyWithEnrichment(
       comObjectInstanceRefs: enrichedComObjects,
-      securityToolKey: device.securityToolKey,
     );
   }
 }

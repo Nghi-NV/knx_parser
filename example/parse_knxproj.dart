@@ -51,10 +51,11 @@ void main(List<String> args) async {
       }
 
       // Group Addresses
-      print('\n  🏷️  Group Addresses (${installation.groupAddresses.length}):');
-      
+      print(
+          '\n  🏷️  Group Addresses (${installation.groupAddresses.length}):');
+
       final flat = project.toFlat();
-      
+
       for (final ga in flat.groupAddresses.take(10)) {
         String info = '    ${ga.formattedAddress} - "${ga.name}"';
         if (ga.roomName != null) {

@@ -13,6 +13,7 @@ class DeviceInstance {
   final int? puid;
   final List<ComObjectInstanceRef> comObjectInstanceRefs;
   final String? securityToolKey;
+  final List<KnxModuleInstance> moduleInstances;
 
   // ── Enriched data ──
   final String? manufacturerName;
@@ -34,6 +35,7 @@ class DeviceInstance {
     this.puid,
     this.comObjectInstanceRefs = const [],
     this.securityToolKey,
+    this.moduleInstances = const [],
     this.manufacturerName,
     this.orderNumber,
     this.applicationName,
@@ -54,6 +56,15 @@ class DeviceInstance {
       toolKey = securityElement.getAttribute('ToolKey');
     }
 
+    // Parse ModuleInstances
+    final moduleInstances = <KnxModuleInstance>[];
+    final moduleInstancesElement = element.getElement('ModuleInstances');
+    if (moduleInstancesElement != null) {
+      for (final mi in moduleInstancesElement.findElements('ModuleInstance')) {
+        moduleInstances.add(KnxModuleInstance.fromXml(mi));
+      }
+    }
+
     return DeviceInstance(
       id: element.getAttribute('Id') ?? '',
       address: int.tryParse(element.getAttribute('Address') ?? '') ?? 0,
@@ -65,6 +76,7 @@ class DeviceInstance {
       puid: int.tryParse(element.getAttribute('Puid') ?? ''),
       comObjectInstanceRefs: comObjects,
       securityToolKey: toolKey,
+      moduleInstances: moduleInstances,
     );
   }
 
@@ -104,6 +116,7 @@ class DeviceInstance {
     String? mediumType,
     String? locationPath,
     List<ComObjectInstanceRef>? comObjectInstanceRefs,
+    List<KnxModuleInstance>? moduleInstances,
   }) {
     final hasName = name != null && name!.isNotEmpty;
     return DeviceInstance(
@@ -125,6 +138,7 @@ class DeviceInstance {
       locationPath: locationPath ?? this.locationPath,
       comObjectInstanceRefs:
           comObjectInstanceRefs ?? this.comObjectInstanceRefs,
+      moduleInstances: moduleInstances ?? this.moduleInstances,
     );
   }
 
@@ -325,4 +339,42 @@ class ComObjectInstanceRef {
       linkedGroupAddresses: linkedGroupAddresses ?? this.linkedGroupAddresses,
     );
   }
+}
+
+/// Represents a ModuleInstance with its Arguments
+class KnxModuleInstance {
+  final String id; // e.g., "MD-1_M-1_MI-1"
+  final String? refId; // e.g., "MD-1_M-1"
+  final Map<String, String> arguments; // argRefId -> value
+
+  const KnxModuleInstance({
+    required this.id,
+    this.refId,
+    this.arguments = const {},
+  });
+
+  factory KnxModuleInstance.fromXml(XmlElement element) {
+    final args = <String, String>{};
+    final argsElement = element.getElement('Arguments');
+    if (argsElement != null) {
+      for (final arg in argsElement.findElements('Argument')) {
+        final refId = arg.getAttribute('RefId');
+        final value = arg.getAttribute('Value');
+        if (refId != null && value != null) {
+          args[refId] = value;
+        }
+      }
+    }
+    return KnxModuleInstance(
+      id: element.getAttribute('Id') ?? '',
+      refId: element.getAttribute('RefId'),
+      arguments: args,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        if (refId != null) 'refId': refId,
+        if (arguments.isNotEmpty) 'arguments': arguments,
+      };
 }
