@@ -370,99 +370,6 @@ class KnxProjectParser {
     return _parseDatapointTypesFromDocument(document);
   }
 
-  /// Parse manufacturers from knx_master.xml
-  Map<String, String> _parseManufacturers(String xmlContent) {
-    final document = XmlDocument.parse(_normalizeXmlContent(xmlContent));
-    return _parseManufacturersFromDocument(document);
-  }
-
-  /// Parse hardware to program catalog from Hardware.xml.
-  /// Returns a map of Hardware2ProgramRefId -> Map of attributes (mediumType).
-  Map<String, Map<String, String>> _parseHardware2ProgramCatalog(
-      String xmlContent) {
-    final result = <String, Map<String, String>>{};
-    try {
-      final document = XmlDocument.parse(xmlContent);
-      for (final hp in document.findAllElements('Hardware2Program')) {
-        final id = hp.getAttribute('Id');
-        final mediumTypes = hp.getAttribute('MediumTypes'); // e.g. "MT-0"
-        if (id != null && mediumTypes != null) {
-          String medium = mediumTypes;
-          if (mediumTypes.contains('MT-0'))
-            medium = 'TP';
-          else if (mediumTypes.contains('MT-1'))
-            medium = 'PL';
-          else if (mediumTypes.contains('MT-2'))
-            medium = 'RF';
-          else if (mediumTypes.contains('MT-5')) medium = 'IP';
-          result[id] = {'mediumType': medium};
-        }
-      }
-    } catch (_) {}
-    return result;
-  }
-
-  /// Parse application programs from M-*-*.xml.
-  /// Returns a map of ApplicationProgramId -> Map of attributes (name, version).
-  Map<String, Map<String, String>> _parseApplicationProgramCatalog(
-      String xmlContent) {
-    final result = <String, Map<String, String>>{};
-    try {
-      final document = XmlDocument.parse(xmlContent);
-      for (final app in document.findAllElements('ApplicationProgram')) {
-        final id = app.getAttribute('Id');
-        final name = app.getAttribute('Name');
-        final version = app.getAttribute('ApplicationVersion');
-        if (id != null) {
-          result[id] = {
-            if (name != null) 'name': name,
-            if (version != null) 'version': '0.$version',
-          };
-        }
-      }
-    } catch (_) {}
-    return result;
-  }
-
-  /// Parse channels from M-*-*.xml.
-  /// Returns a map of ChannelId -> ChannelName.
-  Map<String, String> _parseChannelCatalog(String xmlContent) {
-    final result = <String, String>{};
-    try {
-      final document = XmlDocument.parse(xmlContent);
-      for (final ch in document.findAllElements('Channel')) {
-        final id = ch.getAttribute('Id');
-        final name = ch.getAttribute('Name') ?? ch.getAttribute('Text');
-        if (id != null && name != null) {
-          result[id] = name;
-        }
-      }
-    } catch (_) {}
-    return result;
-  }
-
-  /// Parse product catalog from Hardware.xml.
-  /// Returns a map of ProductRefId -> Map of attributes (name, orderNumber).
-  Map<String, Map<String, String>> _parseProductCatalog(String xmlContent) {
-    final result = <String, Map<String, String>>{};
-    try {
-      final document = XmlDocument.parse(xmlContent);
-      for (final product in document.findAllElements('Product')) {
-        final id = product.getAttribute('Id');
-        final text = product.getAttribute('Text');
-        final orderNumber = product.getAttribute('OrderNumber');
-        if (id != null) {
-          result[id] = {
-            if (text != null && text.isNotEmpty) 'name': text,
-            if (orderNumber != null && orderNumber.isNotEmpty)
-              'orderNumber': orderNumber,
-          };
-        }
-      }
-    } catch (_) {}
-    return result;
-  }
-
   /// Normalize XML content by removing an eventual UTF-8 BOM.
   String _normalizeXmlContent(String xmlContent) {
     if (xmlContent.isNotEmpty && xmlContent.codeUnitAt(0) == 0xFEFF) {
@@ -738,26 +645,6 @@ class KnxProjectParser {
     final outputFile = io.File(outputPath);
     await outputFile.writeAsString(jsonContent);
     return outputFile;
-  }
-
-  /// Parse ComObject definitions and ComObjectRef mappings from application program XML.
-  /// Populates [comObjectDefs] with suffix -> attributes map.
-  /// Populates [comObjectRefMap] with refSuffix -> attributes map (including overrides).
-  void _parseComObjectDefinitions(
-    String xmlContent,
-    Map<String, Map<String, String>> comObjectDefs,
-    Map<String, Map<String, String>> comObjectRefMap,
-    Map<String, String> moduleArgNames,
-  ) {
-    try {
-      final document = XmlDocument.parse(_normalizeXmlContent(xmlContent));
-      _parseComObjectDefinitionsFromDocument(
-        document,
-        comObjectDefs,
-        comObjectRefMap,
-        moduleArgNames,
-      );
-    } catch (_) {}
   }
 
   void _parseComObjectDefinitionsFromDocument(

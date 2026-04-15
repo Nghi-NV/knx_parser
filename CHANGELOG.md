@@ -12,15 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Skip decoding unrelated files inside project archive; only parse required XML payloads (`project.xml`, `0.xml`) in the first pass.
   - Reuse parsed XML documents for Hardware/Application catalog extraction instead of parsing the same XML content multiple times.
   - Optimize `KnxProject.toFlat()` by replacing repeated nested scans with indexed lookups (ID/suffix maps), plus cached location path resolution.
-
-### Benchmark (Villa_Thiên_Đường_Bảo_Sơn.knxproj, password: `1`, 5 runs)
-- `parseToFlat` average:
-  - Before (1.13.0): `2254.8 ms`
-  - After (1.14.0): `1335.4 ms`
-  - Improvement: ~`40.8%` faster
-- Breakdown average:
-  - `parse`: `2359.0 ms` -> `1400.2 ms` (~`40.6%` faster)
-  - `toFlat`: unchanged near-zero in this dataset (`~1.2 ms` average both before/after)
+- Improved real-world parse performance for encrypted projects in flat mode.
 
 ## [1.13.0] - 2026-04-03
 
