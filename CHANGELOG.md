@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-04-15
+
+### Changed
+- **Performance optimization for flat parsing (`parseToFlat`)**:
+  - Skip decoding unrelated files inside project archive; only parse required XML payloads (`project.xml`, `0.xml`) in the first pass.
+  - Reuse parsed XML documents for Hardware/Application catalog extraction instead of parsing the same XML content multiple times.
+  - Optimize `KnxProject.toFlat()` by replacing repeated nested scans with indexed lookups (ID/suffix maps), plus cached location path resolution.
+
+### Benchmark (Villa_Thiên_Đường_Bảo_Sơn.knxproj, password: `1`, 5 runs)
+- `parseToFlat` average:
+  - Before (1.13.0): `2254.8 ms`
+  - After (1.14.0): `1335.4 ms`
+  - Improvement: ~`40.8%` faster
+- Breakdown average:
+  - `parse`: `2359.0 ms` -> `1400.2 ms` (~`40.6%` faster)
+  - `toFlat`: unchanged near-zero in this dataset (`~1.2 ms` average both before/after)
+
 ## [1.13.0] - 2026-04-03
 
 ### Added

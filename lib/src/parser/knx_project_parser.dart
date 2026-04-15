@@ -193,6 +193,14 @@ class KnxProjectParser {
       for (final file in targetArchive) {
         if (!file.isFile) continue;
 
+        final isProjectXml = file.name.endsWith('project.xml');
+        final isZeroXml = file.name == '$projectId/0.xml' ||
+            (projectId == null && file.name.endsWith('/0.xml')) ||
+            file.name == '0.xml';
+
+        // Skip unrelated files early to avoid costly decode on large archives.
+        if (!isProjectXml && !isZeroXml) continue;
+
         List<int> raw;
         try {
           raw = file.content as List<int>;
@@ -207,11 +215,9 @@ class KnxProjectParser {
         }
         final content = _decodeUtf8WithBom(raw);
 
-        if (file.name.endsWith('project.xml')) {
+        if (isProjectXml) {
           projectInfo = _parseProjectXml(content);
-        } else if (file.name == '$projectId/0.xml' ||
-            (projectId == null && file.name.endsWith('/0.xml')) ||
-            file.name == '0.xml') {
+        } else if (isZeroXml) {
           installations = _parseInstallationXml(content);
           final from0 = _parseDatapointTypes(content);
           if (from0.isNotEmpty) datapointTypes = from0;
@@ -225,9 +231,10 @@ class KnxProjectParser {
           try {
             final raw = f.content as List<int>;
             final hwContent = _decodeUtf8WithBom(raw);
-            final products = _parseProductCatalog(hwContent);
+            final hwDoc = XmlDocument.parse(_normalizeXmlContent(hwContent));
+            final products = _parseProductCatalogFromDocument(hwDoc);
             productCatalog.addAll(products);
-            final h2ps = _parseHardware2ProgramCatalog(hwContent);
+            final h2ps = _parseHardware2ProgramCatalogFromDocument(hwDoc);
             hw2ProgCatalog.addAll(h2ps);
           } catch (_) {}
         } else if (f.name.contains('/M-') &&
@@ -239,11 +246,12 @@ class KnxProjectParser {
           try {
             final raw = f.content as List<int>;
             final appContent = _decodeUtf8WithBom(raw);
-            _parseComObjectDefinitions(
-                appContent, comObjectDefs, comObjectRefMap, moduleArgNames);
-            final apps = _parseApplicationProgramCatalog(appContent);
+            final appDoc = XmlDocument.parse(_normalizeXmlContent(appContent));
+            _parseComObjectDefinitionsFromDocument(
+                appDoc, comObjectDefs, comObjectRefMap, moduleArgNames);
+            final apps = _parseApplicationProgramCatalogFromDocument(appDoc);
             appCatalog.addAll(apps);
-            final channels = _parseChannelCatalog(appContent);
+            final channels = _parseChannelCatalogFromDocument(appDoc);
             channelCatalog.addAll(channels);
           } catch (_) {}
         }
@@ -256,8 +264,9 @@ class KnxProjectParser {
           if (f.isFile && f.name == 'knx_master.xml') {
             final raw = f.content as List<int>;
             final content = _decodeUtf8WithBom(raw);
-            datapointTypes = _parseDatapointTypes(content);
-            mfgCatalog.addAll(_parseManufacturers(content));
+            final masterDoc = XmlDocument.parse(_normalizeXmlContent(content));
+            datapointTypes = _parseDatapointTypesFromDocument(masterDoc);
+            mfgCatalog.addAll(_parseManufacturersFromDocument(masterDoc));
             for (final dt in datapointTypes) {
               for (final st in dt.subtypes) {
                 dpstCatalog[st.id] = st.text;
@@ -357,61 +366,14 @@ class KnxProjectParser {
 
   /// Parse datapoint types from knx_master.xml
   List<DatapointType> _parseDatapointTypes(String xmlContent) {
-    // Some files may have XML declaration with encoding attribute
-    // but actually contain UTF-8 BOM, so we need to handle it
-    String content = xmlContent;
-
-    // Check for BOM at the start
-    if (content.codeUnitAt(0) == 0xFEFF) {
-      // Remove BOM
-      content = content.substring(1);
-    }
-
-    final document = XmlDocument.parse(content);
-    final masterDataElements = document.findAllElements('MasterData');
-
-    if (masterDataElements.isEmpty) {
-      return [];
-    }
-
-    final masterData = masterDataElements.first;
-    final dpTypesElements = masterData.findAllElements('DatapointTypes');
-
-    if (dpTypesElements.isEmpty) {
-      return [];
-    }
-
-    final dpTypes = dpTypesElements.first;
-
-    return dpTypes
-        .findElements('DatapointType')
-        .map((e) => DatapointType.fromXml(e))
-        .toList();
+    final document = XmlDocument.parse(_normalizeXmlContent(xmlContent));
+    return _parseDatapointTypesFromDocument(document);
   }
 
   /// Parse manufacturers from knx_master.xml
   Map<String, String> _parseManufacturers(String xmlContent) {
-    String content = xmlContent;
-    if (content.codeUnitAt(0) == 0xFEFF) {
-      content = content.substring(1);
-    }
-    final document = XmlDocument.parse(content);
-    final masterDataElements = document.findAllElements('MasterData');
-    if (masterDataElements.isEmpty) return {};
-
-    final manufacturersElement =
-        masterDataElements.first.getElement('Manufacturers');
-    if (manufacturersElement == null) return {};
-
-    final manufacturers = <String, String>{};
-    for (final element in manufacturersElement.findElements('Manufacturer')) {
-      final id = element.getAttribute('Id');
-      final name = element.getAttribute('Name');
-      if (id != null && name != null) {
-        manufacturers[id] = name;
-      }
-    }
-    return manufacturers;
+    final document = XmlDocument.parse(_normalizeXmlContent(xmlContent));
+    return _parseManufacturersFromDocument(document);
   }
 
   /// Parse hardware to program catalog from Hardware.xml.
@@ -498,6 +460,121 @@ class KnxProjectParser {
         }
       }
     } catch (_) {}
+    return result;
+  }
+
+  /// Normalize XML content by removing an eventual UTF-8 BOM.
+  String _normalizeXmlContent(String xmlContent) {
+    if (xmlContent.isNotEmpty && xmlContent.codeUnitAt(0) == 0xFEFF) {
+      return xmlContent.substring(1);
+    }
+    return xmlContent;
+  }
+
+  List<DatapointType> _parseDatapointTypesFromDocument(XmlDocument document) {
+    final masterDataElements = document.findAllElements('MasterData');
+    if (masterDataElements.isEmpty) return [];
+
+    final masterData = masterDataElements.first;
+    final dpTypesElements = masterData.findAllElements('DatapointTypes');
+    if (dpTypesElements.isEmpty) return [];
+
+    final dpTypes = dpTypesElements.first;
+    return dpTypes
+        .findElements('DatapointType')
+        .map((e) => DatapointType.fromXml(e))
+        .toList();
+  }
+
+  Map<String, String> _parseManufacturersFromDocument(XmlDocument document) {
+    final masterDataElements = document.findAllElements('MasterData');
+    if (masterDataElements.isEmpty) return {};
+
+    final manufacturersElement =
+        masterDataElements.first.getElement('Manufacturers');
+    if (manufacturersElement == null) return {};
+
+    final manufacturers = <String, String>{};
+    for (final element in manufacturersElement.findElements('Manufacturer')) {
+      final id = element.getAttribute('Id');
+      final name = element.getAttribute('Name');
+      if (id != null && name != null) {
+        manufacturers[id] = name;
+      }
+    }
+    return manufacturers;
+  }
+
+  Map<String, Map<String, String>> _parseHardware2ProgramCatalogFromDocument(
+    XmlDocument document,
+  ) {
+    final result = <String, Map<String, String>>{};
+    for (final hp in document.findAllElements('Hardware2Program')) {
+      final id = hp.getAttribute('Id');
+      final mediumTypes = hp.getAttribute('MediumTypes'); // e.g. "MT-0"
+      if (id != null && mediumTypes != null) {
+        String medium = mediumTypes;
+        if (mediumTypes.contains('MT-0')) {
+          medium = 'TP';
+        } else if (mediumTypes.contains('MT-1')) {
+          medium = 'PL';
+        } else if (mediumTypes.contains('MT-2')) {
+          medium = 'RF';
+        } else if (mediumTypes.contains('MT-5')) {
+          medium = 'IP';
+        }
+        result[id] = {'mediumType': medium};
+      }
+    }
+    return result;
+  }
+
+  Map<String, Map<String, String>> _parseApplicationProgramCatalogFromDocument(
+    XmlDocument document,
+  ) {
+    final result = <String, Map<String, String>>{};
+    for (final app in document.findAllElements('ApplicationProgram')) {
+      final id = app.getAttribute('Id');
+      final name = app.getAttribute('Name');
+      final version = app.getAttribute('ApplicationVersion');
+      if (id != null) {
+        result[id] = {
+          if (name != null) 'name': name,
+          if (version != null) 'version': '0.$version',
+        };
+      }
+    }
+    return result;
+  }
+
+  Map<String, String> _parseChannelCatalogFromDocument(XmlDocument document) {
+    final result = <String, String>{};
+    for (final ch in document.findAllElements('Channel')) {
+      final id = ch.getAttribute('Id');
+      final name = ch.getAttribute('Name') ?? ch.getAttribute('Text');
+      if (id != null && name != null) {
+        result[id] = name;
+      }
+    }
+    return result;
+  }
+
+  Map<String, Map<String, String>> _parseProductCatalogFromDocument(
+    XmlDocument document,
+  ) {
+    final result = <String, Map<String, String>>{};
+    for (final product in document.findAllElements('Product')) {
+      final id = product.getAttribute('Id');
+      final text = product.getAttribute('Text');
+      final orderNumber = product.getAttribute('OrderNumber');
+      if (id != null) {
+        result[id] = {
+          if (text != null && text.isNotEmpty) 'name': text,
+          if (orderNumber != null && orderNumber.isNotEmpty)
+            'orderNumber': orderNumber,
+        };
+      }
+    }
     return result;
   }
 
@@ -673,47 +750,60 @@ class KnxProjectParser {
     Map<String, String> moduleArgNames,
   ) {
     try {
-      final document = XmlDocument.parse(xmlContent);
-
-      // Parse ComObject elements (definitions)
-      for (final co in document.findAllElements('ComObject')) {
-        final id = co.getAttribute('Id');
-        if (id == null) continue;
-        final attrs = <String, String>{};
-        for (final attr in co.attributes) {
-          attrs[attr.name.local] = attr.value;
-        }
-        comObjectDefs[id] = attrs;
-      }
-
-      // Parse ComObjectRef elements (may override some attributes)
-      for (final coRef in document.findAllElements('ComObjectRef')) {
-        final id = coRef.getAttribute('Id');
-        final refId = coRef.getAttribute('RefId');
-        if (id == null) continue;
-        final attrs = <String, String>{};
-        for (final attr in coRef.attributes) {
-          attrs[attr.name.local] = attr.value;
-        }
-        // Store the ComObject RefId for lookup
-        if (refId != null) attrs['_comObjectId'] = refId;
-        comObjectRefMap[id] = attrs;
-      }
-
-      // Parse ModuleDef argument names for template resolution
-      for (final moduleDef in document.findAllElements('ModuleDef')) {
-        final argsContainer = moduleDef.getElement('Arguments');
-        if (argsContainer != null) {
-          for (final arg in argsContainer.findElements('Argument')) {
-            final id = arg.getAttribute('Id');
-            final name = arg.getAttribute('Name');
-            if (id != null && name != null) {
-              moduleArgNames[id] = name;
-            }
-          }
-        }
-      }
+      final document = XmlDocument.parse(_normalizeXmlContent(xmlContent));
+      _parseComObjectDefinitionsFromDocument(
+        document,
+        comObjectDefs,
+        comObjectRefMap,
+        moduleArgNames,
+      );
     } catch (_) {}
+  }
+
+  void _parseComObjectDefinitionsFromDocument(
+    XmlDocument document,
+    Map<String, Map<String, String>> comObjectDefs,
+    Map<String, Map<String, String>> comObjectRefMap,
+    Map<String, String> moduleArgNames,
+  ) {
+    // Parse ComObject elements (definitions)
+    for (final co in document.findAllElements('ComObject')) {
+      final id = co.getAttribute('Id');
+      if (id == null) continue;
+      final attrs = <String, String>{};
+      for (final attr in co.attributes) {
+        attrs[attr.name.local] = attr.value;
+      }
+      comObjectDefs[id] = attrs;
+    }
+
+    // Parse ComObjectRef elements (may override some attributes)
+    for (final coRef in document.findAllElements('ComObjectRef')) {
+      final id = coRef.getAttribute('Id');
+      final refId = coRef.getAttribute('RefId');
+      if (id == null) continue;
+      final attrs = <String, String>{};
+      for (final attr in coRef.attributes) {
+        attrs[attr.name.local] = attr.value;
+      }
+      // Store the ComObject RefId for lookup
+      if (refId != null) attrs['_comObjectId'] = refId;
+      comObjectRefMap[id] = attrs;
+    }
+
+    // Parse ModuleDef argument names for template resolution
+    for (final moduleDef in document.findAllElements('ModuleDef')) {
+      final argsContainer = moduleDef.getElement('Arguments');
+      if (argsContainer == null) continue;
+
+      for (final arg in argsContainer.findElements('Argument')) {
+        final id = arg.getAttribute('Id');
+        final name = arg.getAttribute('Name');
+        if (id != null && name != null) {
+          moduleArgNames[id] = name;
+        }
+      }
+    }
   }
 
   /// Merge ComObjectRef overrides into base ComObject attrs.

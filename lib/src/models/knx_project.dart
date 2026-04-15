@@ -103,21 +103,64 @@ class KnxProject {
     }
 
     // Separate locations into buildings, floors and rooms
-    final buildingLocations = allLocations.where((l) => l.type == 'Building');
-    final floorLocations = allLocations.where((l) => l.type == 'Floor');
-    final roomLocations = allLocations.where((l) => l.type == 'Room');
+    final buildingLocations = <Location>[];
+    final floorLocations = <Location>[];
+    final roomLocations = <Location>[];
+    for (final loc in allLocations) {
+      if (loc.type == 'Building') {
+        buildingLocations.add(loc);
+      } else if (loc.type == 'Floor') {
+        floorLocations.add(loc);
+      } else if (loc.type == 'Room') {
+        roomLocations.add(loc);
+      }
+    }
 
     final deviceToRoom = <String, Location>{};
     final gaToLocation = <String, Location>{};
+    final gaToLocationBySuffix = <String, Location>{};
+    final floorIdsByBuildingId = <String, List<String>>{};
+    final roomIdsByFloorId = <String, List<String>>{};
+    final locationPathCache = <String, String>{};
+
+    String locationPathOf(Location location) {
+      final cached = locationPathCache[location.id];
+      if (cached != null) return cached;
+
+      final pathParts = <String>[];
+      Location? current = location;
+      // ignore: unnecessary_null_comparison
+      while (current != null) {
+        pathParts.add(current.name);
+        current = current.parent;
+      }
+      final path = pathParts.reversed.join(' > ');
+      locationPathCache[location.id] = path;
+      return path;
+    }
 
     for (final room in roomLocations) {
       for (final devId in room.deviceInstanceIds) {
         deviceToRoom[devId] = room;
       }
+
+      final floorId = room.parent?.id;
+      if (floorId != null) {
+        roomIdsByFloorId.putIfAbsent(floorId, () => []).add(room.id);
+      }
     }
+
+    for (final floor in floorLocations) {
+      final buildingId = floor.parent?.id;
+      if (buildingId != null) {
+        floorIdsByBuildingId.putIfAbsent(buildingId, () => []).add(floor.id);
+      }
+    }
+
     for (final loc in allLocations) {
       for (final gaRefId in loc.groupAddressRefIds) {
         gaToLocation[gaRefId] = loc;
+        gaToLocationBySuffix.putIfAbsent(_idSuffix(gaRefId), () => loc);
       }
     }
 
@@ -133,38 +176,30 @@ class KnxProject {
 
     // Build buildings
     final buildings = buildingLocations.map((building) {
-      final buildingFloorIds = floorLocations
-          .where((f) => f.parent?.id == building.id)
-          .map((f) => f.id)
-          .toList();
       return KnxBuilding(
         id: building.id,
         name: building.name,
         puid: building.puid,
-        floorIds: buildingFloorIds,
+        floorIds: floorIdsByBuildingId[building.id] ?? const [],
       );
     }).toList();
 
     // Build floors
     final floors = floorLocations.map((floor) {
-      final floorRoomIds = roomLocations
-          .where((r) => r.parent?.id == floor.id)
-          .map((r) => r.id)
-          .toList();
       return KnxFloor(
         id: floor.id,
         name: floor.name,
         puid: floor.puid,
         buildingId: floor.parent?.id,
-        roomIds: floorRoomIds,
+        roomIds: roomIdsByFloorId[floor.id] ?? const [],
       );
     }).toList();
 
     // Build rooms with device refs
     final rooms = roomLocations.map((room) {
       final roomDeviceRefs = room.deviceInstanceIds
-          .where((id) => deviceRefMap.containsKey(id))
-          .map((id) => deviceRefMap[id]!)
+          .map((id) => deviceRefMap[id])
+          .whereType<KnxDeviceRef>()
           .toList();
       return KnxRoom(
         id: room.id,
@@ -182,14 +217,7 @@ class KnxProject {
 
       String? locPath = d.locationPath;
       if (locPath == null && room != null) {
-        final pathParts = <String>[];
-        Location? current = room;
-        // ignore: unnecessary_null_comparison
-        while (current != null) {
-          pathParts.add(current.name);
-          current = current.parent;
-        }
-        locPath = pathParts.reversed.join(' > ');
+        locPath = locationPathOf(room);
       }
 
       return KnxDevice(
@@ -226,53 +254,49 @@ class KnxProject {
     }).toList();
 
     // Build GA-to-device mapping from comObject links
-    final gaToDeviceRefs = <String, List<KnxDeviceRef>>{};
+    final gaById = <String, GroupAddress>{};
+    final gaBySuffix = <String, GroupAddress>{};
+    for (final ga in allGroupAddresses) {
+      gaById[ga.id] = ga;
+      gaBySuffix.putIfAbsent(_idSuffix(ga.id), () => ga);
+    }
+
+    final gaToDeviceIds = <String, Set<String>>{};
     for (final entry in deviceEntries) {
       for (final comObj in entry.device.comObjectInstanceRefs) {
-        if (comObj.links != null) {
-          for (final link in comObj.links!.split(' ')) {
-            final trimmed = link.trim();
-            if (trimmed.isEmpty) continue;
-            for (final ga in allGroupAddresses) {
-              if (ga.id.endsWith('_$trimmed') || ga.id == trimmed) {
-                gaToDeviceRefs.putIfAbsent(ga.id, () => []);
-                if (!gaToDeviceRefs[ga.id]!
-                    .any((r) => r.id == entry.device.id)) {
-                  gaToDeviceRefs[ga.id]!.add(deviceRefMap[entry.device.id]!);
-                }
-                break;
-              }
-            }
-          }
+        final links = comObj.links;
+        if (links == null || links.isEmpty) continue;
+
+        for (final link in links.split(' ')) {
+          final trimmed = link.trim();
+          if (trimmed.isEmpty) continue;
+
+          final ga = gaById[trimmed] ?? gaBySuffix[trimmed];
+          if (ga == null) continue;
+
+          gaToDeviceIds
+              .putIfAbsent(ga.id, () => <String>{})
+              .add(entry.device.id);
         }
       }
     }
 
     // Build group addresses
     final groupAddresses = allGroupAddresses.map((ga) {
-      Location? loc = gaToLocation[ga.id];
-
-      // Fallback matching logic for GA IDs if exact match fails
-      if (loc == null) {
-        for (final entry in gaToLocation.entries) {
-          if (ga.id.endsWith(entry.key) || entry.key.endsWith(ga.id)) {
-            loc = entry.value;
-            break;
-          }
-        }
-      }
+      final gaSuffix = _idSuffix(ga.id);
+      final loc = gaToLocation[ga.id] ??
+          gaToLocation[gaSuffix] ??
+          gaToLocationBySuffix[gaSuffix];
 
       String? locPath;
       if (loc != null) {
-        final pathParts = <String>[];
-        Location? current = loc;
-        // ignore: unnecessary_null_comparison
-        while (current != null) {
-          pathParts.add(current.name);
-          current = current.parent;
-        }
-        locPath = pathParts.reversed.join(' > ');
+        locPath = locationPathOf(loc);
       }
+
+      final linkedDeviceRefs = (gaToDeviceIds[ga.id] ?? const <String>{})
+          .map((id) => deviceRefMap[id])
+          .whereType<KnxDeviceRef>()
+          .toList();
 
       return KnxGroupAddress(
         id: ga.id,
@@ -285,7 +309,7 @@ class KnxProject {
         roomName: loc?.type == 'Room' ? loc?.name : null,
         locationPath: locPath,
         key: ga.key,
-        devices: gaToDeviceRefs[ga.id] ?? const [],
+        devices: linkedDeviceRefs,
       );
     }).toList();
 
@@ -370,6 +394,12 @@ class KnxProject {
       return '$main.$sub';
     }
     return dpt;
+  }
+
+  static String _idSuffix(String id) {
+    final idx = id.lastIndexOf('_');
+    if (idx < 0 || idx == id.length - 1) return id;
+    return id.substring(idx + 1);
   }
 
   @override
